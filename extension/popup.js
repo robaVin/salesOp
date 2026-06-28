@@ -5,8 +5,8 @@
 // token config to chrome.storage.local.
 
 const DEFAULTS = {
-  backendUrl: 'http://localhost:3001',
-  canvasUrl: 'http://localhost:5173',
+  backendUrl: 'https://salesop-9ajb.onrender.com',
+  canvasUrl: 'https://sales-op-frontend.vercel.app',
   apiToken: '',
 }
 

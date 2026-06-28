@@ -5,8 +5,8 @@
   "description": "Press Alt+Shift+S anywhere to capture selected text (or the open Gmail thread) as a note on Sales Canvas. Configure your API token in the popup.",
   "permissions": ["activeTab", "scripting", "notifications", "tabs", "storage"],
   "host_permissions": [
-    "http://localhost:3001/*",
-    "http://localhost:5173/*",
+    "https://salesop-9ajb.onrender.com/*",
+    "https://sales-op-frontend.vercel.app/*",
     "https://mail.google.com/*"
   ],
   "background": {
