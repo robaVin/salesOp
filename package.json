@@ -1,0 +1,14 @@
+{
+  "name": "sales-canvas",
+  "private": true,
+  "version": "0.1.0",
+  "description": "AI Sales Operations Canvas — visual workspace for prospect/account workflows",
+  "workspaces": ["backend", "frontend"],
+  "scripts": {
+    "dev:backend": "npm --workspace backend run dev",
+    "dev:frontend": "npm --workspace frontend run dev",
+    "db:apply": "npm --workspace backend run db:apply",
+    "db:seed": "npm --workspace backend run db:seed",
+    "db:migrate": "npm --workspace backend run db:migrate"
+  }
+}

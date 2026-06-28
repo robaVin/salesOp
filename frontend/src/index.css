@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', system-ui, sans-serif;
+  background: theme('colors.canvas.bg');
+  color: theme('colors.slate.900');
+  overflow: hidden;
+}
+
+/* React Flow chrome refinements */
+.react-flow__attribution {
+  display: none !important;
+}
+.react-flow__renderer {
+  background-color: theme('colors.canvas.bg');
+}
+.react-flow__edge-path {
+  stroke: theme('colors.slate.400');
+  stroke-width: 1.5;
+}
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: theme('colors.blue.500');
+}
+.react-flow__handle {
+  width: 8px;
+  height: 8px;
+  background: theme('colors.slate.300');
+  border: 1px solid theme('colors.white');
+}
+
+/* cmdk palette */
+[cmdk-root] {
+  font-family: inherit;
+}
+[cmdk-item] {
+  cursor: pointer;
+}
+[cmdk-item][data-selected='true'] {
+  background: theme('colors.slate.100');
+}
+
+/* Scrollbar polish */
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: theme('colors.slate.300');
+  border-radius: 8px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: theme('colors.slate.400');
+}

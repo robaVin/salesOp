@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sales Canvas Capture</title>
+    <style>
+      :root {
+        color-scheme: light;
+      }
+      body {
+        margin: 0;
+        padding: 16px;
+        width: 320px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+        color: #0f172a;
+        background: #ffffff;
+        font-size: 13px;
+      }
+      h1 {
+        font-size: 14px;
+        font-weight: 600;
+        margin: 0 0 4px;
+      }
+      .sub {
+        margin: 0 0 14px;
+        color: #475569;
+        font-size: 11.5px;
+      }
+      label {
+        display: block;
+        font-size: 11px;
+        font-weight: 500;
+        color: #334155;
+        margin-bottom: 4px;
+      }
+      input[type='text'],
+      input[type='password'] {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 7px 10px;
+        font-size: 12px;
+        font-family: inherit;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        outline: none;
+      }
+      input:focus {
+        border-color: #60a5fa;
+        box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.2);
+      }
+      .row {
+        margin-bottom: 12px;
+      }
+      .row.tight {
+        margin-bottom: 8px;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 7px 12px;
+        font-size: 12px;
+        font-weight: 600;
+        border-radius: 8px;
+        border: 1px solid #0f172a;
+        background: #0f172a;
+        color: #ffffff;
+        cursor: pointer;
+      }
+      .btn:hover {
+        background: #1e293b;
+      }
+      .btn.secondary {
+        background: #ffffff;
+        color: #0f172a;
+        border-color: #cbd5e1;
+      }
+      .btn.secondary:hover {
+        background: #f1f5f9;
+      }
+      .row.actions {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+      }
+      .pill {
+        display: inline-block;
+        padding: 3px 8px;
+        border-radius: 999px;
+        font-size: 10.5px;
+        font-weight: 600;
+      }
+      .pill.ok {
+        background: #dcfce7;
+        color: #166534;
+      }
+      .pill.warn {
+        background: #fef3c7;
+        color: #92400e;
+      }
+      .pill.err {
+        background: #fee2e2;
+        color: #991b1b;
+      }
+      .pill.muted {
+        background: #f1f5f9;
+        color: #475569;
+      }
+      .status-card {
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 10px 12px;
+        margin-bottom: 14px;
+      }
+      .status-card .small {
+        font-size: 10.5px;
+        color: #64748b;
+        margin-top: 4px;
+      }
+      details {
+        margin-top: 12px;
+        border-top: 1px solid #e2e8f0;
+        padding-top: 12px;
+      }
+      summary {
+        cursor: pointer;
+        font-size: 11px;
+        font-weight: 600;
+        color: #475569;
+        list-style: none;
+      }
+      summary::-webkit-details-marker {
+        display: none;
+      }
+      summary::before {
+        content: '▸ ';
+        color: #94a3b8;
+      }
+      details[open] summary::before {
+        content: '▾ ';
+      }
+      .hint {
+        font-size: 10.5px;
+        color: #64748b;
+        margin: 4px 0 12px;
+      }
+      a {
+        color: #1d4ed8;
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Sales Canvas Capture</h1>
+    <p class="sub">Captures use your existing canvas sign-in.</p>
+
+    <div class="status-card">
+      <div id="statusLine">
+        <span id="statusPill" class="pill muted">Checking…</span>
+      </div>
+      <div id="signInRow" class="small" style="display: none">
+        <a id="signInLink" href="#" target="_blank">Open canvas to sign in →</a>
+      </div>
+    </div>
+
+    <div class="row tight">
+      <label for="backendUrl">Backend URL</label>
+      <input id="backendUrl" type="text" placeholder="http://localhost:3001" />
+    </div>
+
+    <div class="row">
+      <label for="canvasUrl">Canvas URL</label>
+      <input id="canvasUrl" type="text" placeholder="http://localhost:5173" />
+    </div>
+
+    <div class="row actions">
+      <button id="testBtn" class="btn secondary" type="button">Re-check</button>
+      <button id="saveBtn" class="btn" type="button">Save</button>
+    </div>
+
+    <details id="advancedDetails">
+      <summary>Advanced — API token (optional)</summary>
+      <p class="hint">
+        Use this only for headless or service-account access. Normal users do
+        not need a token — the extension uses your canvas sign-in cookie.
+      </p>
+      <div class="row">
+        <label for="apiToken">API token</label>
+        <input id="apiToken" type="password" placeholder="sct_…" autocomplete="off" />
+      </div>
+    </details>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
