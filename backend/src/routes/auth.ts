@@ -209,7 +209,8 @@ authRouter.get('/auth/google/callback', async (req: Request, res: Response) => {
 
   const token = signSession({ sub: user.id, ws: user.workspace_id, role: user.role })
   setSessionCookie(res, token)
-  res.redirect(redirect || '/')
+  const safeRedirect = redirect && redirect.startsWith('/') ? redirect : '/'
+  res.redirect(`${process.env.DASHBOARD_ORIGIN}${safeRedirect}`)  
 })
 
 // ----- session lookup -----
