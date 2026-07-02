@@ -26,6 +26,7 @@ import { CanvasModeProvider, useCanvasMode } from '../canvas/CanvasModeContext'
 import { OverlayLayer } from '../canvas/OverlayLayer'
 import { CommandPalette, type CommandKey } from '../components/CommandPalette'
 import { CreateWorkspaceModal } from '../components/CreateWorkspaceModal'
+import { Onboarding } from '../components/Onboarding'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { Inspector } from '../components/Inspector'
 import { RunHistory } from '../components/RunHistory'
@@ -904,6 +905,7 @@ export function CanvasPage() {
     <ReactFlowProvider>
       <CanvasModeProvider>
         <CanvasApp />
+        <Onboarding />
       </CanvasModeProvider>
     </ReactFlowProvider>
   )
