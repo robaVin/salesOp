@@ -4,6 +4,7 @@ import { query, queryOne } from '../services/db'
 import { writeAudit } from '../services/auditLog'
 import { resolveCanvasId } from '../services/canvasService'
 import { getRoutine, listRoutines } from '../automations/registry'
+import { childTypesForZone, positionInsideZone, zoneForNodeType } from '../services/layoutStrategy'
 
 export const automationsRouter = Router()
 
@@ -93,7 +94,17 @@ automationsRouter.post('/automations/run', async (req: Request, res: Response) =
 
   let noteId: string | null = null
   if (result.note) {
-    const position = parsed.data.position
+    // Default placement: next free slot inside the Automation zone.
+    let position = parsed.data.position
+    if (!position) {
+      const siblingTypes = childTypesForZone(zoneForNodeType('automation_result'))
+      const countRow = await queryOne<{ n: string }>(
+        `SELECT count(*)::text AS n FROM canvas_nodes
+         WHERE workspace_id = $1 AND node_type = ANY($2::text[])`,
+        [workspaceId, siblingTypes]
+      )
+      position = positionInsideZone('automation_result', Number(countRow?.n ?? 0))
+    }
     const noteRow = await queryOne<{ id: string }>(
       `INSERT INTO canvas_nodes
          (workspace_id, canvas_id, node_type, title, body, status, tags_json,
@@ -107,8 +118,8 @@ automationsRouter.post('/automations/run', async (req: Request, res: Response) =
         result.note.body,
         result.note.status,
         JSON.stringify(result.note.tags ?? []),
-        position?.x ?? 2740,
-        position?.y ?? 80 + Math.random() * 600,
+        position.x,
+        position.y,
         runRow.id,
         JSON.stringify({ routine_key: routine.key, run_id: runRow.id }),
       ]

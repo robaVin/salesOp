@@ -17,6 +17,54 @@ export const SUMMARIZE_NODE_TYPES = [
 
 export type SummarizeNodeType = (typeof SUMMARIZE_NODE_TYPES)[number]
 
+/**
+ * Short "executive summary" of arbitrary text. Used when the UI needs a
+ * compact sentence-level description (e.g. an email preview inside the
+ * detail overlay) rather than a full note. Cheap fallback when OpenAI is
+ * not configured.
+ */
+export interface ContextSummary {
+  summary: string
+  mocked: boolean
+}
+
+export async function summarizeForContext(params: {
+  workspaceId: string
+  text: string
+  purpose: 'email' | 'note' | 'meeting'
+}): Promise<ContextSummary> {
+  const text = params.text.trim()
+  if (text.length === 0) return { summary: '', mocked: false }
+
+  if (!isOpenAiConfigured()) {
+    // Deterministic fallback — first two sentences, capped, so the UI always
+    // has something to show even without an OpenAI key.
+    const sentences = text.split(/(?<=[.!?])\s+/).slice(0, 2).join(' ').trim()
+    const clip = (sentences || text).slice(0, 280)
+    return { summary: clip, mocked: true }
+  }
+
+  const system =
+    params.purpose === 'email'
+      ? 'You produce a one-sentence executive summary of an email for a busy salesperson. Under 30 words. Direct. Say what the sender wants and any ask, deadline, or amount mentioned. No greetings. No sign-offs.'
+      : params.purpose === 'meeting'
+        ? 'One-sentence summary of a meeting note: the decision or action item that matters, under 30 words.'
+        : 'One or two sentences summarizing the key point. Under 40 words.'
+
+  const client = getOpenAi()
+  const completion = await client.chat.completions.create({
+    model: env.openAiModel,
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content: text.slice(0, 6000) },
+    ],
+    temperature: 0.2,
+    max_tokens: 120,
+  })
+  const raw = completion.choices[0]?.message?.content ?? ''
+  return { summary: raw.trim(), mocked: false }
+}
+
 export interface SummarizeResult {
   title: string
   body: string

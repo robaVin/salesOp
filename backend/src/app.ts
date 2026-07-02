@@ -9,7 +9,9 @@ import { auditRouter } from './routes/audit'
 import { authRouter } from './routes/auth'
 import { automationsRouter } from './routes/automations'
 import { captureRouter } from './routes/capture'
+import { gmailRouter } from './routes/gmail'
 import { notesRouter } from './routes/notes'
+import { sourcesRouter } from './routes/sources'
 import { statsRouter } from './routes/stats'
 import { healthCheck } from './services/db'
 import { attachAuth, requireAuth } from './middleware/requireAuth'
@@ -56,6 +58,11 @@ app.use('/api', authRouter) // signup / login / logout / me
 // route), so it mounts before the requireAuth gate. Everything else is gated.
 app.use('/api', captureRouter)
 
+// Gmail OAuth: prepare needs auth (checked inside), callback intentionally
+// does NOT (state JWT carries user_id — session cookie is not sent on the
+// top-level GET back from Google). Mount before requireAuth so callback works.
+app.use('/api', gmailRouter)
+
 // ----- protected routes (require an authenticated user) -----
 app.use('/api', requireAuth)
 app.use('/api', notesRouter)
@@ -64,6 +71,7 @@ app.use('/api', aiRouter)
 app.use('/api', automationsRouter)
 app.use('/api', auditRouter)
 app.use('/api', apiTokensRouter)
+app.use('/api', sourcesRouter)
 
 app.use((_req, res) => {
   res.status(404).json({ error: 'not_found' })

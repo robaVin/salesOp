@@ -6,6 +6,7 @@ import { writeAudit } from '../services/auditLog'
 import { summarizeText } from '../services/aiSummarize'
 import { resolveCanvasId } from '../services/canvasService'
 import { findUserByEmail } from '../services/userService'
+import { childTypesForZone, positionInsideZone, zoneForNodeType } from '../services/layoutStrategy'
 
 export const captureRouter = Router()
 
@@ -28,15 +29,6 @@ interface NoteRow {
   metadata_json: Record<string, unknown>
   created_at: Date
 }
-
-// Captures land in a vertical "inbox" column on the left of the canvas — close
-// to origin so they're visible on a fresh empty canvas, and predictable so the
-// frontend can auto-pan to them.
-const CAPTURE_INBOX_X = 80
-const CAPTURE_INBOX_Y_BASE = 80
-const CAPTURE_INBOX_SPACING = 200
-const CAPTURE_INBOX_COLUMN_COUNT = 12
-let captureCounter = 0
 
 /**
  * Dev-only fallback: when the request arrives with no auth context and
@@ -97,12 +89,15 @@ captureRouter.post('/capture', async (req: Request, res: Response) => {
     return
   }
 
-  const slot = captureCounter % (CAPTURE_INBOX_COLUMN_COUNT * 2)
-  const column = Math.floor(slot / CAPTURE_INBOX_COLUMN_COUNT) // 0 or 1
-  const row = slot % CAPTURE_INBOX_COLUMN_COUNT
-  const x = CAPTURE_INBOX_X + column * 280
-  const y = CAPTURE_INBOX_Y_BASE + row * CAPTURE_INBOX_SPACING
-  captureCounter += 1
+  // Zone-aware placement: a capture lands in the home zone of whatever type
+  // the summarizer classified it as (general notes/prospects → Notes zone).
+  const siblingTypes = childTypesForZone(zoneForNodeType(summary.node_type))
+  const countRow = await queryOne<{ n: string }>(
+    `SELECT count(*)::text AS n FROM canvas_nodes
+     WHERE workspace_id = $1 AND node_type = ANY($2::text[])`,
+    [workspaceId, siblingTypes]
+  )
+  const { x, y } = positionInsideZone(summary.node_type, Number(countRow?.n ?? 0))
 
   const metadata: Record<string, unknown> = {
     captured: true,

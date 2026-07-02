@@ -14,20 +14,23 @@ statsRouter.get('/stats', async (req: Request, res: Response) => {
       query<CountRow>(
         `SELECT count(*)::text AS c FROM canvas_nodes
          WHERE workspace_id = $1 AND node_type = 'followup'
-           AND status IN ('open','in_progress','needs_review')`,
+           AND status IN ('open','in_progress','needs_review')
+           AND deleted_at IS NULL`,
         [workspaceId]
       ),
       query<CountRow>(
         `SELECT count(*)::text AS c FROM canvas_nodes
          WHERE workspace_id = $1
            AND node_type IN ('email_draft','linkedin_draft')
-           AND status = 'open'`,
+           AND status = 'open'
+           AND deleted_at IS NULL`,
         [workspaceId]
       ),
       query<CountRow>(
         `SELECT count(*)::text AS c FROM canvas_nodes
          WHERE workspace_id = $1 AND node_type = 'objection'
-           AND status IN ('open','in_progress','needs_review')`,
+           AND status IN ('open','in_progress','needs_review')
+           AND deleted_at IS NULL`,
         [workspaceId]
       ),
       query<CountRow>(
@@ -39,7 +42,8 @@ statsRouter.get('/stats', async (req: Request, res: Response) => {
       query<CountRow>(
         `SELECT count(*)::text AS c FROM canvas_nodes
          WHERE workspace_id = $1 AND node_type = 'account'
-           AND status IN ('needs_review','in_progress')`,
+           AND status IN ('needs_review','in_progress')
+           AND deleted_at IS NULL`,
         [workspaceId]
       ),
     ])

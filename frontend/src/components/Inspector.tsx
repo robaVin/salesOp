@@ -2,19 +2,51 @@ import { useEffect, useState } from 'react'
 import clsx from 'clsx'
 import type { NoteRecord, NoteStatus } from '../types'
 import { STATUS_BADGE, STATUS_LABEL, TYPE_LABELS } from '../canvas/nodeStyles'
-import { Trash2 } from 'lucide-react'
+import { canCreateWorkspaceFrom } from '../canvas/relations'
+import { FolderMinus, FolderPlus, Plus, Trash2, X } from 'lucide-react'
 
 const STATUSES: NoteStatus[] = ['open', 'in_progress', 'resolved', 'dismissed', 'needs_review']
 
 interface InspectorProps {
   note: NoteRecord | null
+  workspaces: NoteRecord[]
   onPatch: (id: string, patch: { title?: string; body?: string; status?: NoteStatus }) => void
   onDelete: (id: string) => void
   onDraftEmail: (id: string) => void
   onDraftLinkedIn: (id: string) => void
+  onCreateWorkspace: (id: string) => void
+  onMoveToWorkspace: (id: string, parentNodeId: string) => void
+  onAddNote: (workspaceId: string) => void
+  onRemoveFromWorkspace: (id: string) => void
+  onClose: () => void
 }
 
-export function Inspector({ note, onPatch, onDelete, onDraftEmail, onDraftLinkedIn }: InspectorProps) {
+function CloseButton({ onClose }: { onClose: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClose}
+      title="Close inspector"
+      className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+    >
+      <X size={14} />
+    </button>
+  )
+}
+
+export function Inspector({
+  note,
+  workspaces,
+  onPatch,
+  onDelete,
+  onDraftEmail,
+  onDraftLinkedIn,
+  onCreateWorkspace,
+  onMoveToWorkspace,
+  onAddNote,
+  onRemoveFromWorkspace,
+  onClose,
+}: InspectorProps) {
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
 
@@ -32,7 +64,10 @@ export function Inspector({ note, onPatch, onDelete, onDraftEmail, onDraftLinked
     return (
       <aside className="flex h-full w-80 flex-col border-l border-slate-200 bg-white">
         <div className="border-b border-slate-200 px-5 py-4">
-          <h2 className="text-sm font-semibold text-slate-900">Inspector</h2>
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-slate-900">Inspector</h2>
+            <CloseButton onClose={onClose} />
+          </div>
           <p className="mt-1 text-xs text-slate-500">Select a note to inspect and edit.</p>
         </div>
         <div className="flex flex-1 items-center justify-center px-6 text-center text-xs text-slate-400">
@@ -43,6 +78,10 @@ export function Inspector({ note, onPatch, onDelete, onDraftEmail, onDraftLinked
   }
 
   const isDraft = note.node_type === 'email_draft' || note.node_type === 'linkedin_draft'
+  const workspaceEligible = canCreateWorkspaceFrom(note)
+  const claimedByWorkspace = Boolean(
+    note.parent_node_id && workspaces.some((w) => w.id === note.parent_node_id)
+  )
 
   return (
     <aside className="flex h-full w-80 flex-col border-l border-slate-200 bg-white">
@@ -51,14 +90,17 @@ export function Inspector({ note, onPatch, onDelete, onDraftEmail, onDraftLinked
           <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
             {TYPE_LABELS[note.node_type]}
           </span>
-          <span
-            className={clsx(
-              'rounded-full px-2 py-0.5 text-[10px] font-semibold',
-              STATUS_BADGE[note.status]
-            )}
-          >
-            {STATUS_LABEL[note.status]}
-          </span>
+          <div className="flex items-center gap-1.5">
+            <span
+              className={clsx(
+                'rounded-full px-2 py-0.5 text-[10px] font-semibold',
+                STATUS_BADGE[note.status]
+              )}
+            >
+              {STATUS_LABEL[note.status]}
+            </span>
+            <CloseButton onClose={onClose} />
+          </div>
         </div>
         <input
           value={title}
@@ -143,6 +185,68 @@ export function Inspector({ note, onPatch, onDelete, onDraftEmail, onDraftLinked
               >
                 Draft LinkedIn reply
               </button>
+            </div>
+          </div>
+        ) : null}
+
+        {note.is_workspace ? (
+          <div className="mt-5">
+            <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+              Workspace
+            </label>
+            <div className="mt-2 flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => onAddNote(note.id)}
+                className="flex items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+              >
+                <Plus size={12} />
+                Add note to workspace
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {workspaceEligible ? (
+          <div className="mt-5">
+            <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+              Workspace
+            </label>
+            <div className="mt-2 flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => onCreateWorkspace(note.id)}
+                className="flex items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+              >
+                <FolderPlus size={12} />
+                Create workspace from this
+              </button>
+              {workspaces.length > 0 ? (
+                <select
+                  value=""
+                  onChange={(e) => {
+                    if (e.target.value) onMoveToWorkspace(note.id, e.target.value)
+                  }}
+                  className="rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-700 outline-none focus:border-blue-400"
+                >
+                  <option value="">Move to workspace…</option>
+                  {workspaces.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.title}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+              {claimedByWorkspace ? (
+                <button
+                  type="button"
+                  onClick={() => onRemoveFromWorkspace(note.id)}
+                  className="flex items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  <FolderMinus size={12} />
+                  Remove from workspace
+                </button>
+              ) : null}
             </div>
           </div>
         ) : null}

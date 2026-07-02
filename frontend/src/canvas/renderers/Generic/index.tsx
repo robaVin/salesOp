@@ -11,7 +11,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import type { NodeRendererSet, RendererProps, DetailRendererProps } from '../types'
-import { CardFrame, DetailShell, StatusPill } from '../shared'
+import { CardFrame, CreateWorkspaceButton, DetailShell, RemoveFromWorkspaceButton, StatusPill } from '../shared'
 import { STATUS_LABEL, TYPE_LABELS } from '../../nodeStyles'
 import type { NoteStatus } from '../../../types'
 
@@ -85,7 +85,7 @@ function MetaCell({ label, value }: { label: string; value: React.ReactNode }) {
   )
 }
 
-function Detail({ note, mode, onPatch, onExit }: DetailRendererProps) {
+function Detail({ note, mode, onPatch, onExit, onCreateWorkspace, onRemoveFromWorkspace }: DetailRendererProps) {
   const [title, setTitle] = useState(note.title)
   const [body, setBody] = useState(note.body)
   const [editingBody, setEditingBody] = useState(false)
@@ -296,13 +296,17 @@ function Detail({ note, mode, onPatch, onExit }: DetailRendererProps) {
           {/* FOOTER */}
           <div className="mt-8 flex items-center justify-between border-t border-slate-100 pt-4 text-[11px] text-slate-400">
             <span>Press Esc to return to canvas</span>
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 rounded-md border border-red-100 px-2 py-1 text-[11px] font-semibold text-red-600 hover:bg-red-50"
-            >
-              <Trash2 size={11} />
-              Delete (Inspector)
-            </button>
+            <div className="flex items-center gap-2">
+              {onRemoveFromWorkspace ? <RemoveFromWorkspaceButton onClick={onRemoveFromWorkspace} /> : null}
+              {onCreateWorkspace ? <CreateWorkspaceButton onClick={onCreateWorkspace} /> : null}
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 rounded-md border border-red-100 px-2 py-1 text-[11px] font-semibold text-red-600 hover:bg-red-50"
+              >
+                <Trash2 size={11} />
+                Delete (Inspector)
+              </button>
+            </div>
           </div>
         </div>
       </div>

@@ -11,6 +11,7 @@ import {
   Search,
   Sparkles,
   StickyNote,
+  Trash2,
   UserCircle2,
   Wrench,
   Zap,
@@ -33,6 +34,7 @@ export type CommandKey =
   | 'draft_linkedin_reply'
   | 'mark_resolved'
   | 'search_notes'
+  | 'open_trash'
 
 interface PaletteCommand {
   key: CommandKey
@@ -80,7 +82,8 @@ const COMMANDS: PaletteCommand[] = [
     icon: <CircleCheck size={16} />,
     requiresSelection: true,
   },
-  { key: 'search_notes', label: 'Search notes', icon: <Search size={16} /> },
+  { key: 'search_notes', label: 'Search notes', hint: '/', icon: <Search size={16} /> },
+  { key: 'open_trash', label: 'Open Trash bin', icon: <Trash2 size={16} /> },
 ]
 
 interface CommandPaletteProps {
