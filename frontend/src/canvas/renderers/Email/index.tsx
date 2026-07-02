@@ -3,7 +3,7 @@ import clsx from 'clsx'
 import { AlertTriangle, ExternalLink, Loader2, Mail, Paperclip, Sparkles, Star, Tag, Trash2 } from 'lucide-react'
 import type { NoteRecord } from '../../../types'
 import type { NodeRendererSet, RendererProps, DetailRendererProps } from '../types'
-import { CardFrame, DetailShell, StatusPill } from '../shared'
+import { CardFrame, CreateWorkspaceButton, DetailShell, RemoveFromWorkspaceButton, StatusPill } from '../shared'
 
 // Extract a typed view over the metadata_json bag that Gmail (and future email
 // sources) write. Every field is optional so a partial payload still renders.
@@ -219,7 +219,7 @@ function Preview({ note, selected }: RendererProps) {
 }
 
 // ---------- Detail (click / Enter — focused or immersive) ----------
-function Detail({ note, mode, onExit, onDelete }: DetailRendererProps) {
+function Detail({ note, mode, onExit, onDelete, onCreateWorkspace, onRemoveFromWorkspace }: DetailRendererProps) {
   const m = readMeta(note)
   const unread = m.is_unread === true
   const important = m.is_important === true
@@ -390,6 +390,8 @@ function Detail({ note, mode, onExit, onDelete }: DetailRendererProps) {
                 Back to canvas
               </button>
             ) : null}
+            {onCreateWorkspace ? <CreateWorkspaceButton onClick={onCreateWorkspace} /> : null}
+            {onRemoveFromWorkspace ? <RemoveFromWorkspaceButton onClick={onRemoveFromWorkspace} /> : null}
             {onDelete ? (
               <button
                 type="button"

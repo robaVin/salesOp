@@ -33,6 +33,12 @@ export interface DetailRendererProps extends RendererProps {
   onOpenNode?: (nodeId: string) => void
   /** Delete this note (soft delete → Trash) and close the overlay. */
   onDelete?: () => void
+  /** Create a workspace anchored on this note. Present only for eligible types. */
+  onCreateWorkspace?: () => void
+  /** Add a new note into this container. Present only on workspace containers. */
+  onAddNote?: () => void
+  /** Detach this note from its workspace. Present only when it's claimed. */
+  onRemoveFromWorkspace?: () => void
 }
 
 export type DetailRenderer = (props: DetailRendererProps) => JSX.Element

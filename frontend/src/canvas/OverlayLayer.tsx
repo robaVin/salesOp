@@ -10,6 +10,7 @@ import {
   type ScreenRect,
 } from './measureNodeRect'
 import type { NoteRecord } from '../types'
+import { canCreateWorkspaceFrom, isClaimedByWorkspace, isWorkspace, workspaceIdSet } from './relations'
 
 interface OverlayLayerProps {
   notes: NoteRecord[]
@@ -19,6 +20,9 @@ interface OverlayLayerProps {
   ) => void
   onOpenNode: (nodeId: string) => void
   onDelete: (id: string) => void
+  onCreateWorkspace: (id: string) => void
+  onAddNote: (workspaceId: string) => void
+  onRemoveFromWorkspace: (id: string) => void
 }
 
 /**
@@ -29,7 +33,7 @@ interface OverlayLayerProps {
  *
  * Mounted once at the top of CanvasApp. Exits cleanly when mode → canvas.
  */
-export function OverlayLayer({ notes, onPatch, onOpenNode, onDelete }: OverlayLayerProps) {
+export function OverlayLayer({ notes, onPatch, onOpenNode, onDelete, onCreateWorkspace, onAddNote, onRemoveFromWorkspace }: OverlayLayerProps) {
   const { mode, exit } = useCanvasMode()
   const ctx = useRendererContext()
 
@@ -170,6 +174,24 @@ export function OverlayLayer({ notes, onPatch, onOpenNode, onDelete }: OverlayLa
               exit()
               onDelete(note.id)
             }}
+            onCreateWorkspace={
+              canCreateWorkspaceFrom(note)
+                ? () => {
+                    // Back to canvas so the create modal + fly-to aren't behind the overlay.
+                    exit()
+                    onCreateWorkspace(note.id)
+                  }
+                : undefined
+            }
+            onAddNote={isWorkspace(note) ? () => onAddNote(note.id) : undefined}
+            onRemoveFromWorkspace={
+              isClaimedByWorkspace(note, workspaceIdSet(notes))
+                ? () => {
+                    exit()
+                    onRemoveFromWorkspace(note.id)
+                  }
+                : undefined
+            }
           />
         </motion.div>
       </motion.div>

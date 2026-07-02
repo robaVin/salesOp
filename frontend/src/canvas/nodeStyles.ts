@@ -30,6 +30,7 @@ export const TYPE_LABELS: Record<NoteType, string> = {
   notes_zone: 'Notes Zone',
   tasks_zone: 'Tasks Zone',
   automation_zone: 'Automation Zone',
+  workspace: 'Workspace',
 }
 
 export const TYPE_ACCENT: Record<NoteType, string> = {
@@ -62,6 +63,7 @@ export const TYPE_ACCENT: Record<NoteType, string> = {
   notes_zone: 'border-l-blue-500',
   tasks_zone: 'border-l-emerald-500',
   automation_zone: 'border-l-fuchsia-500',
+  workspace: 'border-l-slate-900',
 }
 
 export const TYPE_BG: Record<NoteType, string> = {
@@ -94,6 +96,7 @@ export const TYPE_BG: Record<NoteType, string> = {
   notes_zone: 'bg-blue-50/60',
   tasks_zone: 'bg-emerald-50/60',
   automation_zone: 'bg-fuchsia-50/60',
+  workspace: 'bg-white',
 }
 
 export const STATUS_BADGE: Record<NoteStatus, string> = {

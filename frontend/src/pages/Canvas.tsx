@@ -21,9 +21,11 @@ import { NoteNode, type NoteNodeData, RendererContextProvider } from '../canvas/
 import { ZoneMiniMap } from '../canvas/ZoneMiniMap'
 import { ZoomTracker } from '../canvas/ZoomContext'
 import { useCameraController } from '../canvas/CameraController'
+import { isClaimedByWorkspace, workspaceIdSet } from '../canvas/relations'
 import { CanvasModeProvider, useCanvasMode } from '../canvas/CanvasModeContext'
 import { OverlayLayer } from '../canvas/OverlayLayer'
 import { CommandPalette, type CommandKey } from '../components/CommandPalette'
+import { CreateWorkspaceModal } from '../components/CreateWorkspaceModal'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { Inspector } from '../components/Inspector'
 import { RunHistory } from '../components/RunHistory'
@@ -58,6 +60,7 @@ function CanvasApp() {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [trashOpen, setTrashOpen] = useState(false)
+  const [createWsSource, setCreateWsSource] = useState<NoteRecord | null>(null)
   const [inspectorOpen, setInspectorOpen] = useState(true)
   const [summarizeOpen, setSummarizeOpen] = useState(false)
   const [summarizeBusy, setSummarizeBusy] = useState(false)
@@ -76,8 +79,13 @@ function CanvasApp() {
 
   useEffect(() => {
     // Emails are not free-floating canvas nodes — they render inside the
-    // Email zone's scrollable list. Everything else is a real node.
-    const canvasNotes = notes.filter((n) => n.node_type !== 'email')
+    // Email zone's scrollable list. Nodes claimed by a user workspace also
+    // leave the flat canvas (they live in that workspace). Everything else
+    // is a real node.
+    const wsIds = workspaceIdSet(notes)
+    const canvasNotes = notes.filter(
+      (n) => n.node_type !== 'email' && !isClaimedByWorkspace(n, wsIds)
+    )
     const next: Node<NoteNodeData>[] = canvasNotes.map((note) => {
       // Zones render underneath their contained children. React Flow paints
       // nodes in ascending zIndex order, so setting zone zIndex to a large
@@ -159,9 +167,13 @@ function CanvasApp() {
   }, [loading, notes, rfInstance])
 
   const rfEdges: Edge[] = useMemo(() => {
-    // Drop edges whose endpoints aren't live nodes (e.g. one side was trashed),
-    // otherwise React Flow warns about edges referencing missing nodes.
-    const liveIds = new Set(notes.map((n) => n.id))
+    // Drop edges whose endpoints aren't rendered nodes (trashed, emails, or
+    // claimed-into-a-workspace), otherwise React Flow warns about edges
+    // referencing missing nodes.
+    const wsIds = workspaceIdSet(notes)
+    const liveIds = new Set(
+      notes.filter((n) => n.node_type !== 'email' && !isClaimedByWorkspace(n, wsIds)).map((n) => n.id)
+    )
     return edgeRows
       .filter((e) => liveIds.has(e.source_node_id) && liveIds.has(e.target_node_id))
       .map((e) => ({
@@ -221,6 +233,8 @@ function CanvasApp() {
     if (!selectedNoteId) return null
     return notes.find((n) => n.id === selectedNoteId) ?? null
   }, [notes, selectedNoteId])
+
+  const workspaces = useMemo(() => notes.filter((n) => n.is_workspace), [notes])
 
   // ---- actions ----
 
@@ -396,6 +410,76 @@ function CanvasApp() {
     [camera, focus, immerse, mode.kind, setSelectedNoteId]
   )
 
+  const openCreateWorkspace = useCallback(
+    (id: string) => {
+      setCreateWsSource(notes.find((n) => n.id === id) ?? null)
+    },
+    [notes]
+  )
+
+  const handleCreateWorkspace = useCallback(
+    async (body: { title: string; workspace_kind: string; color: string; icon: string }) => {
+      const src = createWsSource
+      if (!src) return
+      try {
+        const ws = await api.createWorkspace(src.id, body)
+        setCreateWsSource(null)
+        await refetch()
+        setSelectedNoteId(ws.id)
+        camera.flyTo(ws.id, { zoomLevel: 'preview' })
+        setToast('Workspace created. The source is its anchor.')
+      } catch (err) {
+        setToast(err instanceof Error ? err.message : String(err))
+      }
+    },
+    [createWsSource, refetch, setSelectedNoteId, camera]
+  )
+
+  const handleMoveToWorkspace = useCallback(
+    async (id: string, parentNodeId: string) => {
+      try {
+        await api.moveToWorkspace(id, parentNodeId)
+        await refetch()
+        setToast('Moved into workspace.')
+      } catch (err) {
+        setToast(err instanceof Error ? err.message : String(err))
+      }
+    },
+    [refetch]
+  )
+
+  const handleRemoveFromWorkspace = useCallback(
+    async (id: string) => {
+      try {
+        await api.removeFromWorkspace(id)
+        await refetch()
+        setSelectedNoteId(id)
+        camera.flyTo(id, { zoomLevel: 'preview' }) // it's back in its zone
+        setToast('Removed from workspace.')
+      } catch (err) {
+        setToast(err instanceof Error ? err.message : String(err))
+      }
+    },
+    [refetch, setSelectedNoteId, camera]
+  )
+
+  const handleAddNoteToWorkspace = useCallback(
+    async (workspaceId: string) => {
+      try {
+        const note = await api.createNote({ node_type: 'general_note', title: 'New note', body: '' })
+        // Reuse the move path so parent_node_id writes stay behind one helper.
+        await api.moveToWorkspace(note.id, workspaceId)
+        await refetch()
+        setSelectedNoteId(note.id)
+        focus(note.id) // open the fresh note for immediate editing
+        setToast('Note added to workspace.')
+      } catch (err) {
+        setToast(err instanceof Error ? err.message : String(err))
+      }
+    },
+    [refetch, setSelectedNoteId, focus]
+  )
+
   const handleSearchSelect = useCallback(
     (note: NoteRecord) => {
       setSearchOpen(false)
@@ -501,6 +585,7 @@ function CanvasApp() {
     setSummarizeOpen(false)
     setSearchOpen(false)
     setTrashOpen(false)
+    setCreateWsSource(null)
   })
 
   useChord({
@@ -644,6 +729,7 @@ function CanvasApp() {
           onTrash={() => setTrashOpen((v) => !v)}
           onCommandPalette={() => setPaletteOpen(true)}
           onSearch={() => setSearchOpen(true)}
+          onNewNote={() => void createNote('general_note')}
           onSummarize={() => {
             setSummarizeInitial(undefined)
             setSummarizeOpen(true)
@@ -734,6 +820,9 @@ function CanvasApp() {
               onPatch={handlePatch}
               onOpenNode={handleOpenNode}
               onDelete={handleDelete}
+              onCreateWorkspace={openCreateWorkspace}
+              onAddNote={handleAddNoteToWorkspace}
+              onRemoveFromWorkspace={handleRemoveFromWorkspace}
             />
           </RendererContextProvider>
 
@@ -762,10 +851,15 @@ function CanvasApp() {
         >
           <Inspector
             note={selectedNote}
+            workspaces={workspaces}
             onPatch={handlePatch}
             onDelete={handleDelete}
             onDraftEmail={(id) => void handleDraft(id, 'email')}
             onDraftLinkedIn={(id) => void handleDraft(id, 'linkedin')}
+            onCreateWorkspace={openCreateWorkspace}
+            onMoveToWorkspace={(id, parentId) => void handleMoveToWorkspace(id, parentId)}
+            onAddNote={(id) => void handleAddNoteToWorkspace(id)}
+            onRemoveFromWorkspace={(id) => void handleRemoveFromWorkspace(id)}
             onClose={() => setInspectorOpen(false)}
           />
         </motion.div>
@@ -785,6 +879,13 @@ function CanvasApp() {
         notes={notes}
         trashedNotes={trashedNotes}
         onSelect={handleSearchSelect}
+      />
+
+      <CreateWorkspaceModal
+        open={Boolean(createWsSource)}
+        source={createWsSource}
+        onClose={() => setCreateWsSource(null)}
+        onSubmit={(body) => void handleCreateWorkspace(body)}
       />
 
       <SummarizeModal

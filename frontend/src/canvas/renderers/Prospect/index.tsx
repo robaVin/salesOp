@@ -2,7 +2,7 @@ import clsx from 'clsx'
 import { Activity, Brain, Calendar, ChevronRight, Mail, MessageCircle, Sparkles, UserCircle2 } from 'lucide-react'
 import type { NoteRecord } from '../../../types'
 import type { NodeRendererSet, RendererContext, RendererProps, DetailRendererProps } from '../types'
-import { CardFrame, DetailShell, StatusPill } from '../shared'
+import { CardFrame, CreateWorkspaceButton, DetailShell, RemoveFromWorkspaceButton, StatusPill } from '../shared'
 
 function relatedNotes(prospect: NoteRecord, ctx: RendererContext): NoteRecord[] {
   return ctx.allNotes
@@ -121,7 +121,7 @@ function Stat({ label, value }: { label: string; value: number }) {
   )
 }
 
-function Detail({ note, ctx, mode, onPatch, onOpenNode }: DetailRendererProps) {
+function Detail({ note, ctx, mode, onPatch, onOpenNode, onCreateWorkspace, onRemoveFromWorkspace }: DetailRendererProps) {
   const g = group(note, ctx)
   const isImmersive = mode === 'immersive'
   return (
@@ -226,6 +226,13 @@ function Detail({ note, ctx, mode, onPatch, onOpenNode }: DetailRendererProps) {
                   : 'Keep the cadence; check back in 48 hours.'}
           </p>
         </div>
+
+        {onCreateWorkspace || onRemoveFromWorkspace ? (
+          <div className={clsx('flex justify-end gap-2 border-t border-slate-100', isImmersive ? 'px-10 py-5' : 'px-8 py-4')}>
+            {onRemoveFromWorkspace ? <RemoveFromWorkspaceButton onClick={onRemoveFromWorkspace} /> : null}
+            {onCreateWorkspace ? <CreateWorkspaceButton onClick={onCreateWorkspace} /> : null}
+          </div>
+        ) : null}
       </div>
     </DetailShell>
   )

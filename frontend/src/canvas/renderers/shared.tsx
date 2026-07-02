@@ -1,7 +1,39 @@
 import clsx from 'clsx'
+import { FolderMinus, FolderPlus } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { NoteRecord, NoteStatus } from '../../types'
 import { STATUS_BADGE, STATUS_LABEL, TYPE_ACCENT, TYPE_BG, TYPE_LABELS } from '../nodeStyles'
+
+/** Shared "Create workspace" action for detail cards. Render only when the
+ *  onClick is provided (the overlay gates eligibility in one place). */
+export function CreateWorkspaceButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-[12.5px] font-medium text-slate-700 hover:bg-slate-50"
+      title="Create a workspace with this as the anchor"
+    >
+      <FolderPlus size={13} />
+      Create workspace
+    </button>
+  )
+}
+
+/** Detach this node from its workspace, returning it to its system zone. */
+export function RemoveFromWorkspaceButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-[12.5px] font-medium text-slate-700 hover:bg-slate-50"
+      title="Remove this from its workspace"
+    >
+      <FolderMinus size={13} />
+      Remove from workspace
+    </button>
+  )
+}
 
 interface CardFrameProps {
   note: NoteRecord

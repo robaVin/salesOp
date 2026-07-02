@@ -5,6 +5,7 @@ import type {
   NoteStatus,
   NoteType,
   StatsResponse,
+  WorkspaceKind,
 } from '../types'
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -148,4 +149,24 @@ export const api = {
     }),
 
   stats: () => request<StatsResponse>('/api/stats'),
+
+  listWorkspaceKinds: () => request<{ data: WorkspaceKind[] }>('/api/workspace-kinds'),
+
+  createWorkspace: (
+    sourceNoteId: string,
+    body: { title?: string; workspace_kind?: string; color?: string; icon?: string }
+  ) =>
+    request<NoteRecord>(`/api/notes/${sourceNoteId}/create-workspace`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  moveToWorkspace: (nodeId: string, parentNodeId: string) =>
+    request<NoteRecord>(`/api/notes/${nodeId}/move-to-workspace`, {
+      method: 'POST',
+      body: JSON.stringify({ parent_node_id: parentNodeId }),
+    }),
+
+  removeFromWorkspace: (nodeId: string) =>
+    request<NoteRecord>(`/api/notes/${nodeId}/remove-from-workspace`, { method: 'POST' }),
 }

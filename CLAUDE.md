@@ -441,6 +441,7 @@ Base: [database/schema.sql](database/schema.sql). Then migrations in order.
 | 005 | `005_gmail_and_sources.sql` | `user_oauth_tokens`, `object_syncs`, `'email'` type, source dedup index, `thread_id` JSONB index |
 | 006 | `006_canvas_zones.sql` | 5 zone types added + seeded per workspace |
 | 007 | `007_soft_delete.sql` | `deleted_at` column + partial indexes (Trash Bin) |
+| 008 | `008_promote_to_workspace.sql` | container/relationship columns (`parent_node_id`, `promoted_from_node_id`, `is_workspace`, `workspace_*`, score placeholders), `'workspace'` node_type, indexes, seeded `workspace_kinds` table |
 
 Every migration is idempotent and additive. Never edit a shipped migration.
 
@@ -607,6 +608,22 @@ Ordered by the user's stated priorities.
   the node already be trashed + client-side confirm). Bottom-left `TrashPanel`
   with restore / delete-forever; TopBar trash button with count; store exposes
   `trashedNotes`. Stats exclude trashed.
+
+- **Create Workspace (Promote to Workspace)** — any eligible Sales Object
+  (email, note, task, prospect, account, automation_result, meeting, capture,
+  voice_note) can become a `workspace` container node. Relationship model:
+  `parent_node_id` (container membership) + `promoted_from_node_id` (anchor),
+  both **abstracted behind `nodeRelations.ts` (backend) + `relations.ts`
+  (frontend)** so they can become a graph later. Source is **LINKED, never
+  moved** — stays in its zone, stays searchable, becomes the workspace anchor.
+  The old Zone renderer was generalised into a single **ContainerRenderer**
+  (`renderers/Container/`) serving system zones + workspaces + future clusters;
+  workspaces render as a dashboard/cover card (colour/icon/kind, anchor pinned,
+  related emails/notes/tasks, timeline placeholder). Kinds are **seeded**
+  (`workspace_kinds` table), not hardcoded. Endpoints: `POST
+  /notes/:id/create-workspace`, `POST /notes/:id/move-to-workspace`, `GET
+  /workspace-kinds`. Deleting a workspace never cascades (FKs `ON DELETE SET
+  NULL`; soft-delete via Trash). No AI at creation — deterministic.
 
 ### Next up (approved to plan first)
 

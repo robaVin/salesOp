@@ -32,6 +32,8 @@ export type NoteType =
   | 'notes_zone'
   | 'tasks_zone'
   | 'automation_zone'
+  // User / AI-created containers
+  | 'workspace'
 
 export type NoteStatus = 'open' | 'in_progress' | 'resolved' | 'dismissed' | 'needs_review'
 
@@ -55,6 +57,26 @@ export interface NoteRecord {
   updated_at: string
   /** Set when the node is in the trash (Feature 3). Absent/null on live nodes. */
   deleted_at?: string | null
+  // Containers + relationships (Feature: Create Workspace).
+  parent_node_id?: string | null
+  promoted_from_node_id?: string | null
+  is_workspace?: boolean
+  workspace_kind?: string | null
+  workspace_slug?: string | null
+  workspace_color?: string | null
+  workspace_icon?: string | null
+  workspace_status?: string | null
+  importance_score?: number | null
+  workspace_score?: number | null
+}
+
+export interface WorkspaceKind {
+  key: string
+  label: string
+  description: string | null
+  color: string
+  icon: string
+  sort_order: number
 }
 
 export interface EdgeRecord {

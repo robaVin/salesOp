@@ -116,6 +116,21 @@ export function positionInsideZone(
   return positionForOffsetInside(zone, offset)
 }
 
+/**
+ * User workspaces are dashboard/cover cards, not full-bleed zones — smaller by
+ * default so they feel distinct from the five system zones.
+ */
+export const WORKSPACE_SIZE = { width: 380, height: 260 }
+
+/**
+ * Where a newly-created workspace card lands: just to the right of its source
+ * node, clear of the source card, in the same neighbourhood so the fly-to feels
+ * connected. Deterministic (no collision search yet — a follow-up).
+ */
+export function positionForNewWorkspace(source: { x: number; y: number }): { x: number; y: number } {
+  return { x: source.x + 340, y: source.y - 20 }
+}
+
 // -----------------------------------------------------------------------------
 // LayoutStrategy contract used by objectIngest.
 // -----------------------------------------------------------------------------

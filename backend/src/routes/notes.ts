@@ -1,10 +1,18 @@
 import { Router, Request, Response } from 'express'
 import { z } from 'zod'
-import { query, queryOne } from '../services/db'
+import { query, queryOne, withTransaction } from '../services/db'
 import { writeAudit } from '../services/auditLog'
 import { resolveCanvasId } from '../services/canvasService'
 import { summarizeForContext } from '../services/aiSummarize'
-import { childTypesForZone, positionInsideZone, zoneForNodeType } from '../services/layoutStrategy'
+import {
+  childTypesForZone,
+  positionInsideZone,
+  positionForNewWorkspace,
+  WORKSPACE_SIZE,
+  zoneForNodeType,
+} from '../services/layoutStrategy'
+import { isContainerNode, setParentContainer } from '../services/nodeRelations'
+import { buildWorkspaceMetadata, defaultWorkspaceTitle, slugify } from '../services/workspaceService'
 
 export const notesRouter = Router()
 
@@ -94,13 +102,29 @@ interface NodeRow {
   metadata_json: Record<string, unknown>
   created_at: Date
   updated_at: Date
+  parent_node_id: string | null
+  promoted_from_node_id: string | null
+  is_workspace: boolean
+  workspace_kind: string | null
+  workspace_slug: string | null
+  workspace_color: string | null
+  workspace_icon: string | null
+  workspace_status: string | null
+  importance_score: number | null
+  workspace_score: number | null
 }
+
+// Column list shared by the notes + trash SELECTs (keeps the two in sync).
+const NODE_COLUMNS = `id, workspace_id, canvas_id, node_type, title, body, status,
+       tags_json, position_x, position_y, width, height,
+       source_type, source_id, metadata_json, created_at, updated_at,
+       parent_node_id, promoted_from_node_id, is_workspace,
+       workspace_kind, workspace_slug, workspace_color, workspace_icon,
+       workspace_status, importance_score, workspace_score`
 
 notesRouter.get('/notes', async (req: Request, res: Response) => {
   const rows = await query<NodeRow>(
-    `SELECT id, workspace_id, canvas_id, node_type, title, body, status,
-            tags_json, position_x, position_y, width, height,
-            source_type, source_id, metadata_json, created_at, updated_at
+    `SELECT ${NODE_COLUMNS}
      FROM canvas_nodes
      WHERE workspace_id = $1 AND deleted_at IS NULL
      ORDER BY created_at ASC`,
@@ -113,15 +137,22 @@ notesRouter.get('/notes', async (req: Request, res: Response) => {
 // '/notes/:id' so the literal path isn't captured by the :id param.
 notesRouter.get('/notes/trash', async (req: Request, res: Response) => {
   const rows = await query<NodeRow & { deleted_at: Date }>(
-    `SELECT id, workspace_id, canvas_id, node_type, title, body, status,
-            tags_json, position_x, position_y, width, height,
-            source_type, source_id, metadata_json, created_at, updated_at, deleted_at
+    `SELECT ${NODE_COLUMNS}, deleted_at
      FROM canvas_nodes
      WHERE workspace_id = $1 AND deleted_at IS NOT NULL
      ORDER BY deleted_at DESC`,
     [req.workspaceId]
   )
   res.json({ data: rows, count: rows.length })
+})
+
+// Workspace kinds — seeded reference data for the "Create Workspace" selector.
+notesRouter.get('/workspace-kinds', async (_req: Request, res: Response) => {
+  const rows = await query(
+    `SELECT key, label, description, color, icon, sort_order
+     FROM workspace_kinds ORDER BY sort_order ASC, label ASC`
+  )
+  res.json({ data: rows })
 })
 
 notesRouter.get('/notes/:id', async (req: Request, res: Response) => {
@@ -433,6 +464,190 @@ notesRouter.post('/notes/:id/ai-summarize', async (req: Request, res: Response) 
       detail: err instanceof Error ? err.message : String(err),
     })
   }
+})
+
+// ----- workspaces (Create Workspace / Move to Workspace) -----
+
+const createWorkspaceSchema = z.object({
+  title: z.string().max(200).optional(),
+  workspace_kind: z.string().max(40).optional(),
+  color: z.string().max(20).optional(),
+  icon: z.string().max(40).optional(),
+})
+
+// Turn a source Sales Object into its own workspace container. The source is
+// LINKED as the anchor (parent_node_id → workspace), never moved or duplicated,
+// so it stays in its zone and stays searchable. Deterministic; no AI calls.
+notesRouter.post('/notes/:id/create-workspace', async (req: Request, res: Response) => {
+  const parsed = createWorkspaceSchema.safeParse(req.body ?? {})
+  if (!parsed.success) {
+    res.status(400).json({ error: 'bad_request', detail: parsed.error.issues })
+    return
+  }
+  const workspaceId = req.workspaceId!
+  const source = await queryOne<NodeRow>(
+    `SELECT * FROM canvas_nodes WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL`,
+    [req.params.id, workspaceId]
+  )
+  if (!source) {
+    res.status(404).json({ error: 'note_not_found' })
+    return
+  }
+  // System zones and existing workspaces cannot themselves be promoted.
+  if (source.node_type.endsWith('_zone') || source.is_workspace) {
+    res.status(400).json({ error: 'cannot_promote_container' })
+    return
+  }
+
+  const canvasId = await resolveCanvasId(workspaceId)
+  const kind = parsed.data.workspace_kind ?? 'custom'
+  const kindRow = await queryOne<{ color: string; icon: string }>(
+    `SELECT color, icon FROM workspace_kinds WHERE key = $1`,
+    [kind]
+  )
+  const color = parsed.data.color ?? kindRow?.color ?? '#64748B'
+  const icon = parsed.data.icon ?? kindRow?.icon ?? 'sparkles'
+  const title = parsed.data.title?.trim() || defaultWorkspaceTitle(source)
+  const slug = `${slugify(title)}-${source.id.slice(0, 8)}`
+  const pos = positionForNewWorkspace({ x: source.position_x, y: source.position_y })
+  const meta = buildWorkspaceMetadata(source, null)
+
+  const created = await withTransaction(async (client) => {
+    const inserted = await client.query<NodeRow>(
+      `INSERT INTO canvas_nodes
+         (workspace_id, canvas_id, node_type, title, body, status, tags_json,
+          position_x, position_y, width, height, metadata_json,
+          is_workspace, workspace_kind, workspace_slug, workspace_color, workspace_icon,
+          workspace_status, promoted_from_node_id)
+       VALUES ($1, $2, 'workspace', $3, '', 'open', '["workspace"]'::jsonb,
+               $4, $5, $6, $7, $8::jsonb,
+               true, $9, $10, $11, $12, 'active', $13)
+       RETURNING *`,
+      [
+        workspaceId, canvasId, title,
+        pos.x, pos.y, WORKSPACE_SIZE.width, WORKSPACE_SIZE.height,
+        JSON.stringify(meta),
+        kind, slug, color, icon, source.id,
+      ]
+    )
+    const ws = inserted.rows[0]
+    // Anchor link: the source becomes a child of the new workspace (LINK only).
+    await setParentContainer(client, { workspaceId, nodeId: source.id, parentNodeId: ws.id })
+    return ws
+  })
+
+  await writeAudit({
+    workspaceId,
+    actorUserId: req.userId,
+    actorRole: req.role,
+    action: 'workspace.created',
+    entityType: 'canvas_node',
+    entityId: created.id,
+    afterJson: created,
+  })
+  await writeAudit({
+    workspaceId,
+    actorUserId: req.userId,
+    actorRole: req.role,
+    action: 'workspace.promoted',
+    entityType: 'canvas_node',
+    entityId: source.id,
+    beforeJson: source,
+    metadata: { workspace_node_id: created.id, workspace_kind: kind },
+  })
+  res.status(201).json(created)
+})
+
+const moveToWorkspaceSchema = z.object({
+  parent_node_id: z.string().uuid(),
+})
+
+// Assign an existing node to a workspace/zone by setting its parent container.
+notesRouter.post('/notes/:id/move-to-workspace', async (req: Request, res: Response) => {
+  const parsed = moveToWorkspaceSchema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ error: 'bad_request', detail: parsed.error.issues })
+    return
+  }
+  const workspaceId = req.workspaceId!
+  const node = await queryOne<NodeRow>(
+    `SELECT * FROM canvas_nodes WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL`,
+    [req.params.id, workspaceId]
+  )
+  if (!node) {
+    res.status(404).json({ error: 'note_not_found' })
+    return
+  }
+  if (node.node_type.endsWith('_zone') || node.is_workspace) {
+    res.status(400).json({ error: 'cannot_move_container' })
+    return
+  }
+  const targetOk = await isContainerNode(workspaceId, parsed.data.parent_node_id)
+  if (!targetOk) {
+    res.status(400).json({ error: 'target_not_a_container' })
+    return
+  }
+
+  await withTransaction((client) =>
+    setParentContainer(client, {
+      workspaceId,
+      nodeId: node.id,
+      parentNodeId: parsed.data.parent_node_id,
+    })
+  )
+  const after = await queryOne<NodeRow>(
+    `SELECT * FROM canvas_nodes WHERE id = $1 AND workspace_id = $2`,
+    [node.id, workspaceId]
+  )
+  await writeAudit({
+    workspaceId,
+    actorUserId: req.userId,
+    actorRole: req.role,
+    action: 'workspace.node_moved',
+    entityType: 'canvas_node',
+    entityId: node.id,
+    beforeJson: node,
+    afterJson: after,
+    metadata: { parent_node_id: parsed.data.parent_node_id },
+  })
+  res.json(after)
+})
+
+// Detach a node from its workspace — it returns to its system zone and the
+// flat canvas. Its position is preserved, so it reappears where it was.
+notesRouter.post('/notes/:id/remove-from-workspace', async (req: Request, res: Response) => {
+  const workspaceId = req.workspaceId!
+  const node = await queryOne<NodeRow>(
+    `SELECT * FROM canvas_nodes WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL`,
+    [req.params.id, workspaceId]
+  )
+  if (!node) {
+    res.status(404).json({ error: 'note_not_found' })
+    return
+  }
+  if (!node.parent_node_id) {
+    res.json(node) // already unattached — no-op
+    return
+  }
+  await withTransaction((client) =>
+    setParentContainer(client, { workspaceId, nodeId: node.id, parentNodeId: null })
+  )
+  const after = await queryOne<NodeRow>(
+    `SELECT * FROM canvas_nodes WHERE id = $1 AND workspace_id = $2`,
+    [node.id, workspaceId]
+  )
+  await writeAudit({
+    workspaceId,
+    actorUserId: req.userId,
+    actorRole: req.role,
+    action: 'workspace.node_removed',
+    entityType: 'canvas_node',
+    entityId: node.id,
+    beforeJson: node,
+    afterJson: after,
+    metadata: { detached_from: node.parent_node_id },
+  })
+  res.json(after)
 })
 
 // ----- edges -----
