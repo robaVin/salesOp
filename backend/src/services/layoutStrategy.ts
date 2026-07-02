@@ -196,7 +196,13 @@ export function setLayoutStrategy(strategy: LayoutStrategy): void {
  *
  * Placeholders: $1 = workspace_id (UUID), $2 = canvas_id (UUID)
  */
-export function seedZonesSQL(): string {
+/**
+ * One INSERT statement per zone, each parameterised on ($1 = workspace_id,
+ * $2 = canvas_id). Run them individually — passing several commands in a single
+ * parameterised query is rejected by Postgres ("cannot insert multiple commands
+ * into a prepared statement", 42601).
+ */
+export function seedZoneStatements(): string[] {
   const rows: string[] = []
   for (const [zoneType, rect] of Object.entries(ZONE_LAYOUT) as Array<[ZoneType, ZoneRect]>) {
     const meta = zoneMetadataFor(zoneType)
@@ -211,10 +217,21 @@ export function seedZonesSQL(): string {
       WHERE NOT EXISTS (
         SELECT 1 FROM canvas_nodes
         WHERE workspace_id = $1 AND node_type = '${zoneType}'
-      );
+      )
     `)
   }
-  return rows.join('\n')
+  return rows
+}
+
+/**
+ * All zone-seed statements as one script (semicolon-joined). Safe only for
+ * unparameterised execution. For the signup path use seedZoneStatements() and
+ * run each with its params.
+ */
+export function seedZonesSQL(): string {
+  return seedZoneStatements()
+    .map((s) => s.trim() + ';')
+    .join('\n')
 }
 
 function sqlLit(s: string): string {

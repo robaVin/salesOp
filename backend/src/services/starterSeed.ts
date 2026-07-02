@@ -1,5 +1,5 @@
 import type { PoolClient } from 'pg'
-import { ZONE_LAYOUT, positionInsideZone, seedZonesSQL } from './layoutStrategy'
+import { ZONE_LAYOUT, positionInsideZone, seedZoneStatements } from './layoutStrategy'
 
 /**
  * Seed a fresh workspace with the 5 canvas zones + home nodes + a small
@@ -16,8 +16,11 @@ export async function seedStarterWorkspace(
   workspaceId: string,
   canvasId: string
 ): Promise<void> {
-  // 1. Seed the 5 zones for this workspace.
-  await client.query(seedZonesSQL(), [workspaceId, canvasId])
+  // 1. Seed the 5 zones for this workspace. Each statement runs separately —
+  //    a single parameterised query can't carry multiple commands (42601).
+  for (const stmt of seedZoneStatements()) {
+    await client.query(stmt, [workspaceId, canvasId])
+  }
 
   // 2. Home anchor + Command Center — positioned inside the Home Zone.
   const home = positionInsideZone('home_zone', 0)
