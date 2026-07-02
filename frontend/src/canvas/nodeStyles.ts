@@ -24,6 +24,12 @@ export const TYPE_LABELS: Record<NoteType, string> = {
   screenshot: 'Screenshot',
   meeting: 'Meeting',
   capture: 'Capture',
+  email: 'Email',
+  home_zone: 'Home Zone',
+  email_zone: 'Email Zone',
+  notes_zone: 'Notes Zone',
+  tasks_zone: 'Tasks Zone',
+  automation_zone: 'Automation Zone',
 }
 
 export const TYPE_ACCENT: Record<NoteType, string> = {
@@ -50,6 +56,12 @@ export const TYPE_ACCENT: Record<NoteType, string> = {
   screenshot: 'border-l-teal-500',
   meeting: 'border-l-rose-500',
   capture: 'border-l-fuchsia-400',
+  email: 'border-l-yellow-500',
+  home_zone: 'border-l-amber-500',
+  email_zone: 'border-l-yellow-500',
+  notes_zone: 'border-l-blue-500',
+  tasks_zone: 'border-l-emerald-500',
+  automation_zone: 'border-l-fuchsia-500',
 }
 
 export const TYPE_BG: Record<NoteType, string> = {
@@ -76,6 +88,12 @@ export const TYPE_BG: Record<NoteType, string> = {
   screenshot: 'bg-teal-50',
   meeting: 'bg-rose-50',
   capture: 'bg-fuchsia-50',
+  email: 'bg-yellow-50',
+  home_zone: 'bg-amber-50/60',
+  email_zone: 'bg-yellow-50/60',
+  notes_zone: 'bg-blue-50/60',
+  tasks_zone: 'bg-emerald-50/60',
+  automation_zone: 'bg-fuchsia-50/60',
 }
 
 export const STATUS_BADGE: Record<NoteStatus, string> = {

@@ -1,7 +1,6 @@
 import {
   Background,
   Controls,
-  MiniMap,
   ReactFlow,
   type Edge,
   type Node,
@@ -14,10 +13,12 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { AnimatePresence, motion } from 'framer-motion'
+import { PanelRightOpen } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useHotkeys } from 'react-hotkeys-hook'
 import { api } from '../api/client'
 import { NoteNode, type NoteNodeData, RendererContextProvider } from '../canvas/NoteNode'
+import { ZoneMiniMap } from '../canvas/ZoneMiniMap'
 import { ZoomTracker } from '../canvas/ZoomContext'
 import { useCameraController } from '../canvas/CameraController'
 import { CanvasModeProvider, useCanvasMode } from '../canvas/CanvasModeContext'
@@ -26,7 +27,9 @@ import { CommandPalette, type CommandKey } from '../components/CommandPalette'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { Inspector } from '../components/Inspector'
 import { RunHistory } from '../components/RunHistory'
+import { SearchPanel } from '../components/SearchPanel'
 import { SummarizeModal } from '../components/SummarizeModal'
+import { TrashPanel } from '../components/TrashPanel'
 import { TopBar } from '../components/TopBar'
 import { useChord } from '../hotkeys/chord'
 import { useCanvasData } from '../state/canvasStore'
@@ -37,6 +40,7 @@ const nodeTypes = { note: NoteNode }
 function CanvasApp() {
   const {
     notes,
+    trashedNotes,
     edges: edgeRows,
     runs,
     stats,
@@ -52,6 +56,9 @@ function CanvasApp() {
   const rfInstance = useReactFlow()
   const { mode, focus, immerse, exit } = useCanvasMode()
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [trashOpen, setTrashOpen] = useState(false)
+  const [inspectorOpen, setInspectorOpen] = useState(true)
   const [summarizeOpen, setSummarizeOpen] = useState(false)
   const [summarizeBusy, setSummarizeBusy] = useState(false)
   const [summarizeInitial, setSummarizeInitial] = useState<string | undefined>()
@@ -68,16 +75,38 @@ function CanvasApp() {
   )
 
   useEffect(() => {
-    const next: Node<NoteNodeData>[] = notes.map((note) => ({
-      id: note.id,
-      type: 'note',
-      position: { x: note.position_x, y: note.position_y },
-      data: { note },
-      selected: note.id === selectedNoteId,
-    }))
+    // Emails are not free-floating canvas nodes — they render inside the
+    // Email zone's scrollable list. Everything else is a real node.
+    const canvasNotes = notes.filter((n) => n.node_type !== 'email')
+    const next: Node<NoteNodeData>[] = canvasNotes.map((note) => {
+      // Zones render underneath their contained children. React Flow paints
+      // nodes in ascending zIndex order, so setting zone zIndex to a large
+      // negative value keeps them visually behind everything else while
+      // preserving their normal interaction (drag, select, Enter to zoom).
+      const isZone = note.node_type.endsWith('_zone')
+      // Prefer the session-local position (updated on drag end) over the
+      // server value: rebuilds triggered by selection changes would otherwise
+      // snap freshly-dragged nodes back to their pre-drag spot until the
+      // next refetch lands.
+      const local = positionsRef.current.get(note.id)
+      return {
+        id: note.id,
+        type: 'note',
+        position: local ?? { x: note.position_x, y: note.position_y },
+        data: { note },
+        selected: note.id === selectedNoteId,
+        zIndex: isZone ? -10 : 1,
+        // Prevent zones from consuming small-drag intents on their edges.
+        // The header + child tiles remain clickable; the zone body is a
+        // background surface.
+        draggable: !isZone,
+      }
+    })
     setRfNodes(next)
-    notes.forEach((n) => {
-      positionsRef.current.set(n.id, { x: n.position_x, y: n.position_y })
+    canvasNotes.forEach((n) => {
+      if (!positionsRef.current.has(n.id)) {
+        positionsRef.current.set(n.id, { x: n.position_x, y: n.position_y })
+      }
     })
 
     if (seenNoteIdsRef.current === null) {
@@ -129,17 +158,20 @@ function CanvasApp() {
     })
   }, [loading, notes, rfInstance])
 
-  const rfEdges: Edge[] = useMemo(
-    () =>
-      edgeRows.map((e) => ({
+  const rfEdges: Edge[] = useMemo(() => {
+    // Drop edges whose endpoints aren't live nodes (e.g. one side was trashed),
+    // otherwise React Flow warns about edges referencing missing nodes.
+    const liveIds = new Set(notes.map((n) => n.id))
+    return edgeRows
+      .filter((e) => liveIds.has(e.source_node_id) && liveIds.has(e.target_node_id))
+      .map((e) => ({
         id: e.id,
         source: e.source_node_id,
         target: e.target_node_id,
         label: e.label ?? undefined,
         type: 'smoothstep',
-      })),
-    [edgeRows]
-  )
+      }))
+  }, [edgeRows, notes])
 
   const onNodesChange: OnNodesChange<Node<NoteNodeData>> = useCallback(
     (changes) => {
@@ -200,8 +232,8 @@ function CanvasApp() {
           title: overrides.title ?? `New ${type.replace('_', ' ')}`,
           body: overrides.body ?? '',
           status: overrides.status ?? 'open',
-          position_x: overrides.position_x ?? 200 + Math.random() * 600,
-          position_y: overrides.position_y ?? 200 + Math.random() * 400,
+          // No position → the backend drops it into its home zone
+          // (notes → Notes zone, emails → Email zone, tasks → Tasks zone…).
           ...overrides,
         })
         await refetch()
@@ -223,8 +255,6 @@ function CanvasApp() {
           title: result.title,
           body: result.body,
           tags_json: result.tags,
-          position_x: 200 + Math.random() * 400,
-          position_y: 200 + Math.random() * 200,
         })
         setSummarizeOpen(false)
         setToast(result.mocked ? 'Note created (no OPENAI_API_KEY → fallback summary).' : 'Note created from pasted text.')
@@ -276,12 +306,8 @@ function CanvasApp() {
 
   const handleStripeCheck = useCallback(async () => {
     try {
-      const result = await api.runAutomation(
-        'stripe.connection.check',
-        'hotkey',
-        {},
-        { x: 2740, y: 80 + Math.random() * 600 }
-      )
+      // No position → the backend places the result in the Automation zone.
+      const result = await api.runAutomation('stripe.connection.check', 'hotkey', {})
       await refetch()
       if (result.created_note_id) {
         setSelectedNoteId(result.created_note_id)
@@ -318,11 +344,44 @@ function CanvasApp() {
         await api.deleteNote(id)
         setSelectedNoteId(null)
         await refetch()
+        setToast('Moved to Trash. Open the Trash bin to restore it.')
       } catch (err) {
         setToast(err instanceof Error ? err.message : String(err))
       }
     },
     [refetch, setSelectedNoteId]
+  )
+
+  const handleRestore = useCallback(
+    async (id: string) => {
+      try {
+        await api.restoreNote(id)
+        await refetch()
+        setSelectedNoteId(id)
+        camera.flyTo(id, { zoomLevel: 'preview' })
+        setToast('Restored to the canvas.')
+      } catch (err) {
+        setToast(err instanceof Error ? err.message : String(err))
+      }
+    },
+    [refetch, setSelectedNoteId, camera]
+  )
+
+  const handlePurge = useCallback(
+    async (note: NoteRecord) => {
+      const ok = window.confirm(
+        `Permanently delete "${note.title || 'Untitled'}"? This cannot be undone.`
+      )
+      if (!ok) return
+      try {
+        await api.purgeNote(note.id)
+        await refetch()
+        setToast('Permanently deleted.')
+      } catch (err) {
+        setToast(err instanceof Error ? err.message : String(err))
+      }
+    },
+    [refetch]
   )
 
   const handleOpenNode = useCallback(
@@ -337,12 +396,51 @@ function CanvasApp() {
     [camera, focus, immerse, mode.kind, setSelectedNoteId]
   )
 
+  const handleSearchSelect = useCallback(
+    (note: NoteRecord) => {
+      setSearchOpen(false)
+      // Trashed results aren't on the canvas — surface them in the Trash bin.
+      if (note.deleted_at) {
+        setTrashOpen(true)
+        return
+      }
+      if (mode.kind !== 'canvas') exit()
+      setSelectedNoteId(note.id)
+      if (note.node_type === 'email') {
+        // Emails aren't free-floating nodes — fly to the Email zone that hosts them.
+        const zoneId = notes.find((n) => n.node_type === 'email_zone')?.id
+        if (zoneId) camera.flyTo(zoneId, { zoomLevel: 'preview' })
+      } else {
+        camera.flyTo(note.id, { zoomLevel: 'preview' })
+      }
+    },
+    [notes, camera, setSelectedNoteId, mode.kind, exit]
+  )
+
+  // Double-click a node to open it (same as selecting it and pressing Enter).
+  const onNodeDoubleClick = useCallback(
+    (_event: React.MouseEvent, node: Node<NoteNodeData>) => {
+      if (mode.kind !== 'canvas') return
+      setSelectedNoteId(node.id)
+      focus(node.id)
+    },
+    [mode.kind, setSelectedNoteId, focus]
+  )
+
   // ---- hotkeys ----
 
   // Cmd+K palette
   useHotkeys(['meta+k', 'ctrl+k'], (e) => {
     e.preventDefault()
     setPaletteOpen(true)
+  })
+
+  // "/" — search & filters (canvas mode only). Deliberately NOT Cmd/Ctrl+F so
+  // the browser's native find-in-page stays available.
+  useHotkeys('/', (e) => {
+    if (mode.kind !== 'canvas') return
+    e.preventDefault()
+    setSearchOpen(true)
   })
 
   // N — new note (canvas mode only; in focused/immersive the user is editing)
@@ -401,6 +499,8 @@ function CanvasApp() {
     }
     setPaletteOpen(false)
     setSummarizeOpen(false)
+    setSearchOpen(false)
+    setTrashOpen(false)
   })
 
   useChord({
@@ -515,8 +615,10 @@ function CanvasApp() {
           if (selectedNote) void handlePatch(selectedNote.id, { status: 'resolved' })
           break
         case 'search_notes':
-          setPaletteOpen(true)
-          setToast('Type to filter nodes — the palette doubles as search.')
+          setSearchOpen(true)
+          break
+        case 'open_trash':
+          setTrashOpen(true)
           break
       }
     },
@@ -538,7 +640,10 @@ function CanvasApp() {
       >
         <TopBar
           stats={stats}
+          trashCount={trashedNotes.length}
+          onTrash={() => setTrashOpen((v) => !v)}
           onCommandPalette={() => setPaletteOpen(true)}
+          onSearch={() => setSearchOpen(true)}
           onSummarize={() => {
             setSummarizeInitial(undefined)
             setSummarizeOpen(true)
@@ -574,6 +679,8 @@ function CanvasApp() {
                     onNodesChange={onNodesChange}
                     onEdgesChange={onEdgesChange}
                     onConnect={onConnect}
+                    onNodeDoubleClick={onNodeDoubleClick}
+                    zoomOnDoubleClick={false}
                     minZoom={0.15}
                     maxZoom={2.5}
                     proOptions={{ hideAttribution: true }}
@@ -588,41 +695,7 @@ function CanvasApp() {
                           animate={{ opacity: 1 }}
                           exit={{ opacity: 0 }}
                         >
-                          <MiniMap
-                            position="top-right"
-                            pannable
-                            zoomable
-                            nodeColor={(n) => {
-                              const data = n.data as NoteNodeData | undefined
-                              const t = data?.note.node_type ?? 'general_note'
-                              const map: Record<string, string> = {
-                                daily_briefing: '#f59e0b',
-                                command_center: '#0f172a',
-                                prospect: '#3b82f6',
-                                account: '#10b981',
-                                call_summary: '#a855f7',
-                                followup: '#f59e0b',
-                                objection: '#ef4444',
-                                email_draft: '#0ea5e9',
-                                linkedin_draft: '#6366f1',
-                                automation_result: '#d946ef',
-                                task: '#64748b',
-                                general_note: '#94a3b8',
-                                box: '#a8a29e',
-                                automation_hub: '#d946ef',
-                                stripe: '#8b5cf6',
-                                search: '#06b6d4',
-                                ai_assistant: '#8b5cf6',
-                                inbox: '#f97316',
-                                settings: '#64748b',
-                                voice_note: '#ec4899',
-                                screenshot: '#14b8a6',
-                                meeting: '#f43f5e',
-                                capture: '#d946ef',
-                              }
-                              return map[t] ?? '#94a3b8'
-                            }}
-                          />
+                          <ZoneMiniMap notes={notes} />
                         </motion.div>
                       ) : null}
                     </AnimatePresence>
@@ -646,16 +719,46 @@ function CanvasApp() {
             ) : null}
           </AnimatePresence>
 
+          <TrashPanel
+            open={trashOpen && mode.kind === 'canvas'}
+            notes={trashedNotes}
+            onClose={() => setTrashOpen(false)}
+            onRestore={handleRestore}
+            onPurge={handlePurge}
+          />
+
           {/* The overlay layer: focused + immersive. */}
           <RendererContextProvider allNotes={notes} stats={stats}>
-            <OverlayLayer notes={notes} onPatch={handlePatch} onOpenNode={handleOpenNode} />
+            <OverlayLayer
+              notes={notes}
+              onPatch={handlePatch}
+              onOpenNode={handleOpenNode}
+              onDelete={handleDelete}
+            />
           </RendererContextProvider>
+
+          {/* Reopen tab for the collapsed inspector. */}
+          {!inspectorOpen && mode.kind === 'canvas' ? (
+            <button
+              type="button"
+              onClick={() => setInspectorOpen(true)}
+              title="Open inspector"
+              className="absolute right-0 top-1/2 z-20 -translate-y-1/2 rounded-l-lg border border-r-0 border-slate-200 bg-white px-1.5 py-3 text-slate-500 shadow-sm hover:bg-slate-50 hover:text-slate-800"
+            >
+              <PanelRightOpen size={15} />
+            </button>
+          ) : null}
         </div>
 
         <motion.div
-          animate={{ x: inspectorTranslate, opacity: mode.kind === 'canvas' ? 1 : 0 }}
+          animate={{
+            width: inspectorOpen ? 320 : 0,
+            x: inspectorTranslate,
+            opacity: mode.kind === 'canvas' && inspectorOpen ? 1 : 0,
+          }}
           transition={{ type: 'spring', stiffness: 280, damping: 32 }}
-          style={{ pointerEvents: mode.kind === 'canvas' ? 'auto' : 'none' }}
+          style={{ pointerEvents: mode.kind === 'canvas' && inspectorOpen ? 'auto' : 'none' }}
+          className="overflow-hidden"
         >
           <Inspector
             note={selectedNote}
@@ -663,6 +766,7 @@ function CanvasApp() {
             onDelete={handleDelete}
             onDraftEmail={(id) => void handleDraft(id, 'email')}
             onDraftLinkedIn={(id) => void handleDraft(id, 'linkedin')}
+            onClose={() => setInspectorOpen(false)}
           />
         </motion.div>
       </div>
@@ -673,6 +777,14 @@ function CanvasApp() {
         onCommand={onCommand}
         hasSelection={Boolean(selectedNote)}
         notes={notes}
+      />
+
+      <SearchPanel
+        open={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        notes={notes}
+        trashedNotes={trashedNotes}
+        onSelect={handleSearchSelect}
       />
 
       <SummarizeModal

@@ -7,16 +7,22 @@ import {
   LogOut,
   MessageSquareWarning,
   Receipt,
+  Search as SearchIcon,
   Settings,
+  Trash2,
   TriangleAlert,
   UserCircle2,
 } from 'lucide-react'
 import type { StatsResponse } from '../types'
 import { useAuth } from '../state/authContext'
+import { SourcesToolbar } from './ConnectSourceButton'
 
 interface TopBarProps {
   stats: StatsResponse | null
+  trashCount: number
+  onTrash: () => void
   onCommandPalette: () => void
+  onSearch: () => void
   onSummarize: () => void
   onStripe: () => void
 }
@@ -121,7 +127,15 @@ function UserMenu() {
   )
 }
 
-export function TopBar({ stats, onCommandPalette, onSummarize, onStripe }: TopBarProps) {
+export function TopBar({
+  stats,
+  trashCount,
+  onTrash,
+  onCommandPalette,
+  onSearch,
+  onSummarize,
+  onStripe,
+}: TopBarProps) {
   return (
     <header className="flex h-14 items-center justify-between border-b border-slate-200 bg-white px-4">
       <div className="flex items-center gap-3">
@@ -160,6 +174,27 @@ export function TopBar({ stats, onCommandPalette, onSummarize, onStripe }: TopBa
       </div>
 
       <div className="flex items-center gap-2">
+        <SourcesToolbar compact />
+        <button
+          type="button"
+          onClick={onSearch}
+          className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+          title="Search & filters (/)"
+        >
+          <SearchIcon size={13} className="text-slate-500" />
+          Search /
+        </button>
+        <button
+          type="button"
+          onClick={onTrash}
+          className="relative flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+          title="Trash bin"
+        >
+          <Trash2 size={13} className="text-slate-500" />
+          {trashCount > 0 ? (
+            <span className="tabular-nums text-[11px] font-semibold text-slate-500">{trashCount}</span>
+          ) : null}
+        </button>
         <button
           type="button"
           onClick={onSummarize}

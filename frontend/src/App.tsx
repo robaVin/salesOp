@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider, useAuth } from './state/authContext'
+import { SourcesProvider } from './state/sourcesContext'
 import { CanvasPage } from './pages/Canvas'
 import { LoginPage } from './pages/Login'
 import { SignupPage } from './pages/Signup'
@@ -15,7 +16,7 @@ function Guarded({ children }: { children: JSX.Element }) {
     )
   }
   if (!user) return <Navigate to="/login" replace />
-  return children
+  return <SourcesProvider>{children}</SourcesProvider>
 }
 
 function PublicOnly({ children }: { children: JSX.Element }) {

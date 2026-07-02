@@ -45,6 +45,43 @@ export const env = {
     process.env.NODE_ENV !== 'production' &&
     (process.env.DEV_CAPTURE_NO_AUTH ?? '').trim().toLowerCase() === 'true',
   devCaptureUserEmail: process.env.DEV_CAPTURE_USER_EMAIL ?? '',
+
+  // ---- Feature 1: Gmail Important Emails ----
+  //
+  // Gmail OAuth uses its own redirect URI so the callback lands on the backend
+  // directly (Render in prod). This is distinct from the login OAuth redirect
+  // which points to the Vercel frontend for the login session cookie.
+  gmailOauthRedirectUri:
+    process.env.GMAIL_OAUTH_REDIRECT_URI ??
+    'http://localhost:3001/api/gmail/oauth/callback',
+  // After the Gmail OAuth callback finishes, send the browser back to this
+  // origin. In production this is the Vercel frontend.
+  gmailPostConnectOrigin:
+    process.env.GMAIL_POST_CONNECT_ORIGIN ?? process.env.DASHBOARD_ORIGIN ?? 'http://localhost:5173',
+  // 'real' | 'mock'. Anything other than 'real' is treated as mock.
+  // 'real' also silently falls back to mock if Google OAuth creds are unset.
+  gmailProvider: ((process.env.GMAIL_PROVIDER ?? '').trim().toLowerCase() === 'real'
+    ? 'real'
+    : 'mock') as 'real' | 'mock',
+  gmailDefaultLimit: Number.parseInt(process.env.GMAIL_DEFAULT_LIMIT ?? '50', 10),
+  gmailSyncMaxLimit: Number.parseInt(process.env.GMAIL_SYNC_MAX_LIMIT ?? '200', 10),
+
+  // Token encryption key for user_oauth_tokens (AES-256-GCM key material).
+  // Required in production; a dev fallback derived from SESSION_SECRET is used
+  // otherwise (with a boot warning).
+  tokenEncryptionKey: process.env.TOKEN_ENCRYPTION_KEY ?? '',
+}
+
+// Prod: refuse to boot if TOKEN_ENCRYPTION_KEY isn't set. Real Gmail tokens
+// would otherwise be written under a SESSION_SECRET-derived key, coupling
+// two independent secrets.
+if (
+  process.env.NODE_ENV === 'production' &&
+  (!process.env.TOKEN_ENCRYPTION_KEY || process.env.TOKEN_ENCRYPTION_KEY.trim().length < 16)
+) {
+  throw new Error(
+    'TOKEN_ENCRYPTION_KEY must be set in production (at least 16 chars; recommended 32+ random bytes base64)'
+  )
 }
 
 export function isGoogleOauthConfigured(): boolean {

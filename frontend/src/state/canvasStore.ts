@@ -4,6 +4,7 @@ import type { AutomationRunRecord, EdgeRecord, NoteRecord, StatsResponse } from 
 
 export interface CanvasState {
   notes: NoteRecord[]
+  trashedNotes: NoteRecord[]
   edges: EdgeRecord[]
   runs: AutomationRunRecord[]
   stats: StatsResponse | null
@@ -17,6 +18,7 @@ export interface CanvasState {
 
 export function useCanvasData(): CanvasState {
   const [notes, setNotes] = useState<NoteRecord[]>([])
+  const [trashedNotes, setTrashedNotes] = useState<NoteRecord[]>([])
   const [edges, setEdges] = useState<EdgeRecord[]>([])
   const [runs, setRuns] = useState<AutomationRunRecord[]>([])
   const [stats, setStats] = useState<StatsResponse | null>(null)
@@ -30,13 +32,15 @@ export function useCanvasData(): CanvasState {
     isFetching.current = true
     setError(null)
     try {
-      const [nResp, eResp, rResp, sResp] = await Promise.all([
+      const [nResp, tResp, eResp, rResp, sResp] = await Promise.all([
         api.listNotes(),
+        api.listTrash(),
         api.listEdges(),
         api.listAutomationRuns(),
         api.stats(),
       ])
       setNotes(nResp.data)
+      setTrashedNotes(tResp.data)
       setEdges(eResp.data)
       setRuns(rResp.data)
       setStats(sResp)
@@ -64,6 +68,7 @@ export function useCanvasData(): CanvasState {
 
   return {
     notes,
+    trashedNotes,
     edges,
     runs,
     stats,

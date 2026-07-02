@@ -9,7 +9,8 @@
     "start": "node dist/app.js",
     "db:apply": "ts-node-dev --transpile-only scripts/apply-schema.ts",
     "db:seed": "ts-node-dev --transpile-only scripts/apply-seed.ts",
-    "db:migrate": "ts-node-dev --transpile-only scripts/apply-migrations.ts"
+    "db:migrate": "ts-node-dev --transpile-only scripts/apply-migrations.ts",
+    "db:baseline": "ts-node-dev --transpile-only scripts/baseline-migrations.ts"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",

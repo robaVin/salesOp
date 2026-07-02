@@ -31,6 +31,8 @@ export interface DetailRendererProps extends RendererProps {
   onExit?: () => void
   /** Open a sibling node by id — fly to it AND focus. */
   onOpenNode?: (nodeId: string) => void
+  /** Delete this note (soft delete → Trash) and close the overlay. */
+  onDelete?: () => void
 }
 
 export type DetailRenderer = (props: DetailRendererProps) => JSX.Element

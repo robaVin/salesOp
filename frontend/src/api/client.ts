@@ -46,8 +46,9 @@ export const api = {
         body: input.body ?? '',
         status: input.status ?? 'open',
         tags: input.tags_json ?? [],
-        position_x: input.position_x ?? 200,
-        position_y: input.position_y ?? 200,
+        // Omitted → the backend places the node inside its home zone.
+        position_x: input.position_x,
+        position_y: input.position_y,
         width: input.width ?? 260,
         height: input.height ?? 160,
         source_type: input.source_type ?? undefined,
@@ -79,7 +80,15 @@ export const api = {
       body: JSON.stringify({ position_x: x, position_y: y }),
     }),
 
+  // Soft delete — moves the note to the trash (recoverable).
   deleteNote: (id: string) => request<void>(`/api/notes/${id}`, { method: 'DELETE' }),
+
+  listTrash: () => request<{ data: NoteRecord[] }>('/api/notes/trash'),
+
+  restoreNote: (id: string) => request<NoteRecord>(`/api/notes/${id}/restore`, { method: 'POST' }),
+
+  // Permanent delete — hard removal, only for already-trashed notes.
+  purgeNote: (id: string) => request<void>(`/api/notes/${id}/permanent`, { method: 'DELETE' }),
 
   createEdge: (source_node_id: string, target_node_id: string, label?: string) =>
     request<EdgeRecord>('/api/edges', {

@@ -24,6 +24,14 @@ export type NoteType =
   | 'screenshot'
   | 'meeting'
   | 'capture'
+  // Feature 1: ingested via SourceProvider (Gmail today; Slack/Outlook/... later)
+  | 'email'
+  // Canvas Zones — first-class containers
+  | 'home_zone'
+  | 'email_zone'
+  | 'notes_zone'
+  | 'tasks_zone'
+  | 'automation_zone'
 
 export type NoteStatus = 'open' | 'in_progress' | 'resolved' | 'dismissed' | 'needs_review'
 
@@ -45,6 +53,8 @@ export interface NoteRecord {
   metadata_json: Record<string, unknown>
   created_at: string
   updated_at: string
+  /** Set when the node is in the trash (Feature 3). Absent/null on live nodes. */
+  deleted_at?: string | null
 }
 
 export interface EdgeRecord {

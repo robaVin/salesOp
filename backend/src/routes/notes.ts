@@ -3,6 +3,8 @@ import { z } from 'zod'
 import { query, queryOne } from '../services/db'
 import { writeAudit } from '../services/auditLog'
 import { resolveCanvasId } from '../services/canvasService'
+import { summarizeForContext } from '../services/aiSummarize'
+import { childTypesForZone, positionInsideZone, zoneForNodeType } from '../services/layoutStrategy'
 
 export const notesRouter = Router()
 
@@ -32,6 +34,14 @@ const NODE_TYPES = [
   'screenshot',
   'meeting',
   'capture',
+  // Feature 1: ingested via SourceProvider (Gmail today)
+  'email',
+  // Canvas Zones — first-class containers on the canvas
+  'home_zone',
+  'email_zone',
+  'notes_zone',
+  'tasks_zone',
+  'automation_zone',
 ] as const
 
 const STATUSES = ['open', 'in_progress', 'resolved', 'dismissed', 'needs_review'] as const
@@ -42,8 +52,10 @@ const createSchema = z.object({
   body: z.string().default(''),
   status: z.enum(STATUSES).default('open'),
   tags: z.array(z.string()).default([]),
-  position_x: z.number().default(0),
-  position_y: z.number().default(0),
+  // When omitted, the server places the node inside its home zone
+  // (see layoutStrategy). Explicit coordinates always win.
+  position_x: z.number().optional(),
+  position_y: z.number().optional(),
   width: z.number().default(260),
   height: z.number().default(160),
   source_type: z.string().nullish(),
@@ -90,8 +102,23 @@ notesRouter.get('/notes', async (req: Request, res: Response) => {
             tags_json, position_x, position_y, width, height,
             source_type, source_id, metadata_json, created_at, updated_at
      FROM canvas_nodes
-     WHERE workspace_id = $1
+     WHERE workspace_id = $1 AND deleted_at IS NULL
      ORDER BY created_at ASC`,
+    [req.workspaceId]
+  )
+  res.json({ data: rows, count: rows.length })
+})
+
+// Trash bin — soft-deleted nodes, most-recently-trashed first. Defined before
+// '/notes/:id' so the literal path isn't captured by the :id param.
+notesRouter.get('/notes/trash', async (req: Request, res: Response) => {
+  const rows = await query<NodeRow & { deleted_at: Date }>(
+    `SELECT id, workspace_id, canvas_id, node_type, title, body, status,
+            tags_json, position_x, position_y, width, height,
+            source_type, source_id, metadata_json, created_at, updated_at, deleted_at
+     FROM canvas_nodes
+     WHERE workspace_id = $1 AND deleted_at IS NOT NULL
+     ORDER BY deleted_at DESC`,
     [req.workspaceId]
   )
   res.json({ data: rows, count: rows.length })
@@ -118,6 +145,23 @@ notesRouter.post('/notes', async (req: Request, res: Response) => {
   const input = parsed.data
   const workspaceId = req.workspaceId!
   const canvasId = await resolveCanvasId(workspaceId)
+
+  // Zone-aware placement: nodes created without explicit coordinates land in
+  // the next free slot of their home zone (notes → Notes, emails → Email, …).
+  let posX = input.position_x
+  let posY = input.position_y
+  if (posX === undefined || posY === undefined) {
+    const siblingTypes = childTypesForZone(zoneForNodeType(input.node_type))
+    const countRow = await queryOne<{ n: string }>(
+      `SELECT count(*)::text AS n FROM canvas_nodes
+       WHERE workspace_id = $1 AND node_type = ANY($2::text[])`,
+      [workspaceId, siblingTypes]
+    )
+    const pos = positionInsideZone(input.node_type, Number(countRow?.n ?? 0))
+    posX = posX ?? pos.x
+    posY = posY ?? pos.y
+  }
+
   const row = await queryOne<NodeRow>(
     `INSERT INTO canvas_nodes
        (workspace_id, canvas_id, node_type, title, body, status, tags_json,
@@ -132,8 +176,8 @@ notesRouter.post('/notes', async (req: Request, res: Response) => {
       input.body,
       input.status,
       JSON.stringify(input.tags),
-      input.position_x,
-      input.position_y,
+      posX,
+      posY,
       input.width,
       input.height,
       input.source_type ?? null,
@@ -226,14 +270,78 @@ notesRouter.patch('/notes/:id', async (req: Request, res: Response) => {
   res.json(after)
 })
 
+// Soft delete — moves the node to the trash. It disappears from the canvas but
+// stays recoverable via /restore until permanently purged. This is the default
+// destructive action everywhere in the UI (Inspector, palette): never a hard
+// delete without explicit confirmation.
 notesRouter.delete('/notes/:id', async (req: Request, res: Response) => {
   const workspaceId = req.workspaceId!
   const before = await queryOne<NodeRow>(
-    `SELECT * FROM canvas_nodes WHERE id = $1 AND workspace_id = $2`,
+    `SELECT * FROM canvas_nodes WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL`,
     [req.params.id, workspaceId]
   )
   if (!before) {
     res.status(404).json({ error: 'note_not_found' })
+    return
+  }
+  await query(
+    `UPDATE canvas_nodes SET deleted_at = NOW(), updated_at = NOW()
+     WHERE id = $1 AND workspace_id = $2`,
+    [req.params.id, workspaceId]
+  )
+  await writeAudit({
+    workspaceId,
+    actorUserId: req.userId,
+    actorRole: req.role,
+    action: 'note.trash',
+    entityType: 'canvas_node',
+    entityId: before.id,
+    beforeJson: before,
+  })
+  res.status(204).end()
+})
+
+// Restore — bring a trashed node back to the canvas.
+notesRouter.post('/notes/:id/restore', async (req: Request, res: Response) => {
+  const workspaceId = req.workspaceId!
+  const before = await queryOne<NodeRow>(
+    `SELECT * FROM canvas_nodes WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NOT NULL`,
+    [req.params.id, workspaceId]
+  )
+  if (!before) {
+    res.status(404).json({ error: 'note_not_in_trash' })
+    return
+  }
+  const after = await queryOne<NodeRow>(
+    `UPDATE canvas_nodes SET deleted_at = NULL, updated_at = NOW()
+     WHERE id = $1 AND workspace_id = $2
+     RETURNING *`,
+    [req.params.id, workspaceId]
+  )
+  await writeAudit({
+    workspaceId,
+    actorUserId: req.userId,
+    actorRole: req.role,
+    action: 'note.restore',
+    entityType: 'canvas_node',
+    entityId: before.id,
+    beforeJson: before,
+    afterJson: after,
+  })
+  res.json(after)
+})
+
+// Permanent delete — hard removal. Only reachable from the Trash bin after an
+// explicit client-side confirmation. Requires the node to already be trashed,
+// so a node can never be hard-deleted in a single step.
+notesRouter.delete('/notes/:id/permanent', async (req: Request, res: Response) => {
+  const workspaceId = req.workspaceId!
+  const before = await queryOne<NodeRow>(
+    `SELECT * FROM canvas_nodes WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NOT NULL`,
+    [req.params.id, workspaceId]
+  )
+  if (!before) {
+    res.status(404).json({ error: 'note_not_in_trash' })
     return
   }
   await query(`DELETE FROM canvas_nodes WHERE id = $1 AND workspace_id = $2`, [
@@ -244,12 +352,87 @@ notesRouter.delete('/notes/:id', async (req: Request, res: Response) => {
     workspaceId,
     actorUserId: req.userId,
     actorRole: req.role,
-    action: 'note.delete',
+    action: 'note.purge',
     entityType: 'canvas_node',
     entityId: before.id,
     beforeJson: before,
   })
   res.status(204).end()
+})
+
+// Lazy AI summary for a node. Cached in metadata_json.ai_summary so subsequent
+// opens (or re-syncs of the same object) don't re-hit the model. Used by the
+// Email renderer's Detail view on first open, but the endpoint is generic —
+// any node type can call it. Meetings and voice notes will reuse this in later
+// features.
+notesRouter.post('/notes/:id/ai-summarize', async (req: Request, res: Response) => {
+  const workspaceId = req.workspaceId!
+  const note = await queryOne<NodeRow>(
+    `SELECT * FROM canvas_nodes WHERE id = $1 AND workspace_id = $2`,
+    [req.params.id, workspaceId]
+  )
+  if (!note) {
+    res.status(404).json({ error: 'note_not_found' })
+    return
+  }
+
+  const meta = (note.metadata_json ?? {}) as Record<string, unknown>
+  const existing = typeof meta.ai_summary === 'string' ? meta.ai_summary : null
+  if (existing && existing.length > 0) {
+    res.json({
+      summary: existing,
+      cached: true,
+      mocked: Boolean(meta.ai_summary_mocked),
+      generated_at: typeof meta.ai_summary_generated_at === 'string'
+        ? meta.ai_summary_generated_at
+        : null,
+    })
+    return
+  }
+
+  // Choose what text to summarize. For emails, prefer subject + snippet from
+  // metadata; for other node types, fall back to title + body.
+  const isEmail = note.node_type === 'email'
+  const purpose: 'email' | 'note' | 'meeting' =
+    isEmail ? 'email' : note.node_type === 'meeting' ? 'meeting' : 'note'
+  const subject = typeof meta.subject === 'string' ? meta.subject : ''
+  const snippet = typeof meta.snippet === 'string' ? meta.snippet : ''
+  const inputParts = [
+    subject || note.title,
+    snippet || note.body,
+  ].filter((s) => s && s.length > 0)
+  const text = inputParts.join('\n\n')
+  if (!text) {
+    res.status(400).json({ error: 'nothing_to_summarize' })
+    return
+  }
+
+  try {
+    const result = await summarizeForContext({ workspaceId, text, purpose })
+    const generatedAt = new Date().toISOString()
+    const nextMeta = {
+      ...meta,
+      ai_summary: result.summary,
+      ai_summary_generated_at: generatedAt,
+      ai_summary_mocked: result.mocked,
+    }
+    await query(
+      `UPDATE canvas_nodes SET metadata_json = $1::jsonb, updated_at = NOW()
+       WHERE id = $2 AND workspace_id = $3`,
+      [JSON.stringify(nextMeta), note.id, workspaceId]
+    )
+    res.json({
+      summary: result.summary,
+      cached: false,
+      mocked: result.mocked,
+      generated_at: generatedAt,
+    })
+  } catch (err) {
+    res.status(500).json({
+      error: 'summarize_failed',
+      detail: err instanceof Error ? err.message : String(err),
+    })
+  }
 })
 
 // ----- edges -----

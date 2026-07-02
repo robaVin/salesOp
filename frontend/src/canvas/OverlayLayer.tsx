@@ -18,6 +18,7 @@ interface OverlayLayerProps {
     patch: { title?: string; body?: string; status?: NoteRecord['status'] }
   ) => void
   onOpenNode: (nodeId: string) => void
+  onDelete: (id: string) => void
 }
 
 /**
@@ -28,7 +29,7 @@ interface OverlayLayerProps {
  *
  * Mounted once at the top of CanvasApp. Exits cleanly when mode → canvas.
  */
-export function OverlayLayer({ notes, onPatch, onOpenNode }: OverlayLayerProps) {
+export function OverlayLayer({ notes, onPatch, onOpenNode, onDelete }: OverlayLayerProps) {
   const { mode, exit } = useCanvasMode()
   const ctx = useRendererContext()
 
@@ -164,6 +165,11 @@ export function OverlayLayer({ notes, onPatch, onOpenNode }: OverlayLayerProps) 
             onPatch={(p) => onPatch(note.id, p)}
             onExit={exit}
             onOpenNode={onOpenNode}
+            onDelete={() => {
+              // Close the overlay first so mode resets to canvas, then trash.
+              exit()
+              onDelete(note.id)
+            }}
           />
         </motion.div>
       </motion.div>

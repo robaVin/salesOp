@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import clsx from 'clsx'
 import type { NoteRecord, NoteStatus } from '../types'
 import { STATUS_BADGE, STATUS_LABEL, TYPE_LABELS } from '../canvas/nodeStyles'
-import { Trash2 } from 'lucide-react'
+import { Trash2, X } from 'lucide-react'
 
 const STATUSES: NoteStatus[] = ['open', 'in_progress', 'resolved', 'dismissed', 'needs_review']
 
@@ -12,9 +12,23 @@ interface InspectorProps {
   onDelete: (id: string) => void
   onDraftEmail: (id: string) => void
   onDraftLinkedIn: (id: string) => void
+  onClose: () => void
 }
 
-export function Inspector({ note, onPatch, onDelete, onDraftEmail, onDraftLinkedIn }: InspectorProps) {
+function CloseButton({ onClose }: { onClose: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClose}
+      title="Close inspector"
+      className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+    >
+      <X size={14} />
+    </button>
+  )
+}
+
+export function Inspector({ note, onPatch, onDelete, onDraftEmail, onDraftLinkedIn, onClose }: InspectorProps) {
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
 
@@ -32,7 +46,10 @@ export function Inspector({ note, onPatch, onDelete, onDraftEmail, onDraftLinked
     return (
       <aside className="flex h-full w-80 flex-col border-l border-slate-200 bg-white">
         <div className="border-b border-slate-200 px-5 py-4">
-          <h2 className="text-sm font-semibold text-slate-900">Inspector</h2>
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-slate-900">Inspector</h2>
+            <CloseButton onClose={onClose} />
+          </div>
           <p className="mt-1 text-xs text-slate-500">Select a note to inspect and edit.</p>
         </div>
         <div className="flex flex-1 items-center justify-center px-6 text-center text-xs text-slate-400">
@@ -51,14 +68,17 @@ export function Inspector({ note, onPatch, onDelete, onDraftEmail, onDraftLinked
           <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
             {TYPE_LABELS[note.node_type]}
           </span>
-          <span
-            className={clsx(
-              'rounded-full px-2 py-0.5 text-[10px] font-semibold',
-              STATUS_BADGE[note.status]
-            )}
-          >
-            {STATUS_LABEL[note.status]}
-          </span>
+          <div className="flex items-center gap-1.5">
+            <span
+              className={clsx(
+                'rounded-full px-2 py-0.5 text-[10px] font-semibold',
+                STATUS_BADGE[note.status]
+              )}
+            >
+              {STATUS_LABEL[note.status]}
+            </span>
+            <CloseButton onClose={onClose} />
+          </div>
         </div>
         <input
           value={title}
